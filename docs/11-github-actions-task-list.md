@@ -23,13 +23,13 @@ This checklist tracks the GitHub Actions implementation and the remaining setup 
 
 | Status | Task | Where |
 | --- | --- | --- |
-| pending | Create GitHub repo | GitHub web UI or `gh repo create`, only after explicit push approval. |
-| pending | Push local repo | Requires explicit approval to publish. |
-| pending | Enable GitHub Actions | Repo Settings → Actions. |
-| pending | Enable GitHub Pages | Pages source should be GitHub Actions. |
-| pending | Run manual `monthly` workflow | Actions → AI Mindset Site QA → Run workflow. |
-| pending | Review first hosted dashboard | Open GitHub Pages dashboard URLs after deployment. |
-| pending | Confirm schedule timezone | GitHub cron runs in UTC. |
+| done | Create GitHub repo | `https://github.com/eppelas/aim-site-agent-evaluation`. |
+| done | Push local repo | Initial repo pushed to `main`. |
+| done | Enable GitHub Actions | Workflows are active. |
+| done | Enable GitHub Pages | Pages source is GitHub Actions. |
+| done | Run manual `monthly` workflow | Run `26252035605` completed successfully. |
+| done | Review first hosted dashboard | Pages URLs returned HTTP 200. |
+| done | Confirm schedule timezone | GitHub cron runs in UTC. |
 
 ## Optional Secrets Later
 
@@ -52,13 +52,13 @@ Future integrations may need:
 
 ## First GitHub Acceptance Criteria
 
-- CI workflow passes on push.
-- Manual `monthly` workflow finishes, uploads report artifacts, and deploys GitHub Pages.
-- Hosted dashboard opens at `/reports/latest/dashboard.html`.
-- Hosted production dashboard opens at `/reports/latest/dashboard.production.html`.
-- Hosted staging dashboard opens at `/reports/latest/dashboard.staging.html`.
-- Scheduled workflow is visible and active.
-- No generated screenshots/reports are committed to git.
+- done: CI workflow passed on push.
+- done: Manual `monthly` workflow finished, uploaded report artifacts, and deployed GitHub Pages.
+- done: Hosted dashboard opens at `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.html`.
+- done: Hosted production dashboard opens at `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.production.html`.
+- done: Hosted staging dashboard opens at `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.staging.html`.
+- done: Scheduled workflow is visible and active.
+- done: No generated screenshots/reports are committed to git.
 
 ## Open Follow-Up Tasks
 

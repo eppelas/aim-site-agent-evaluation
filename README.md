@@ -6,6 +6,8 @@ This repo is intentionally separate from the site source code. It should monitor
 
 - Production: `https://aimindset.org/`
 - Staging: `https://staging.aimindset.org/`
+- GitHub repo: `https://github.com/eppelas/aim-site-agent-evaluation`
+- GitHub Pages dashboard: `https://eppelas.github.io/aim-site-agent-evaluation/`
 
 The production site is the canonical baseline. The staging site is the Astro/Sanity replacement candidate. A third operating mode, migration comparison, checks whether staging is ready to replace production.
 

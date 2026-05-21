@@ -2,6 +2,17 @@
 
 This repo is ready to run website QA through GitHub Actions after it is pushed to GitHub.
 
+Repository:
+
+- `https://github.com/eppelas/aim-site-agent-evaluation`
+
+Hosted dashboards:
+
+- `https://eppelas.github.io/aim-site-agent-evaluation/`
+- `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.html`
+- `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.production.html`
+- `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.staging.html`
+
 ## Workflows
 
 ### CI
@@ -62,18 +73,21 @@ Hosted dashboard paths:
 
 ## First Setup After Push
 
-1. Open the GitHub repository.
-2. Go to **Actions**.
-3. Confirm Actions are enabled for the repository.
-4. Open **CI** and confirm it passed on the first push.
-5. Go to **Settings → Pages**.
-6. Confirm the Pages source is **GitHub Actions**.
-7. Open **AI Mindset Site QA**.
-8. Click **Run workflow**.
-9. Choose `monthly` for the first hosted run so both sites get full screenshot coverage and baselines.
-10. Wait for the run to complete.
-11. Open the Pages deployment URL.
-12. Review the index, production, and staging dashboards.
+Completed on 2026-05-21:
+
+- GitHub repository created and pushed.
+- CI passed on push.
+- Pages enabled with GitHub Actions as the source.
+- Manual `monthly` run completed successfully: `https://github.com/eppelas/aim-site-agent-evaluation/actions/runs/26252035605`.
+- Hosted dashboard URLs returned HTTP 200.
+
+For future manual runs:
+
+1. Open **AI Mindset Site QA** in GitHub Actions.
+2. Click **Run workflow**.
+3. Choose `health`, `biweekly`, or `monthly`.
+4. Wait for the run to complete.
+5. Open the Pages dashboard URLs above.
 
 ## Artifact Review
 
