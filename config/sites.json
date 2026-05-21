@@ -1,0 +1,27 @@
+{
+  "sites": [
+    {
+      "id": "production",
+      "name": "AI Mindset Production",
+      "baseUrl": "https://aimindset.org/",
+      "role": "canonical-baseline",
+      "sitemapUrl": "https://aimindset.org/sitemap.xml",
+      "robotsUrl": "https://aimindset.org/robots.txt",
+      "timezone": "Europe/Lisbon"
+    },
+    {
+      "id": "staging",
+      "name": "AI Mindset Staging",
+      "baseUrl": "https://staging.aimindset.org/",
+      "role": "replacement-candidate",
+      "sitemapUrl": null,
+      "robotsUrl": "https://staging.aimindset.org/robots.txt",
+      "timezone": "Europe/Lisbon"
+    }
+  ],
+  "artifactStorage": {
+    "preferred": "r2-or-s3",
+    "humanGalleryFallback": "google-drive"
+  },
+  "baselinePolicy": "manual-approval"
+}

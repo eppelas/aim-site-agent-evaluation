@@ -1,0 +1,115 @@
+{
+  "preferredProvider": "browserstack",
+  "fallbackProviders": ["lambdatest", "saucelabs"],
+  "executionPolicy": {
+    "enabledByDefault": false,
+    "githubActionsMode": "separate-device-cloud-job-after-secrets",
+    "failMainQaWhenDeviceCloudFails": false,
+    "recommendedCadence": {
+      "manual": "before launch and after major responsive/UI changes",
+      "monthly": "broad device/browser sweep",
+      "biweekly": "only P0 smoke after false positive rate is understood"
+    }
+  },
+  "requiredSecrets": {
+    "browserstack": ["BROWSERSTACK_USERNAME", "BROWSERSTACK_ACCESS_KEY"],
+    "lambdatest": ["LT_USERNAME", "LT_ACCESS_KEY"],
+    "saucelabs": ["SAUCE_USERNAME", "SAUCE_ACCESS_KEY"]
+  },
+  "desiredCoverage": [
+    {
+      "id": "desktop-chrome-windows",
+      "priority": "p0",
+      "kind": "desktop",
+      "browser": "Google Chrome",
+      "os": "Windows",
+      "automationStatus": "device-cloud-ready"
+    },
+    {
+      "id": "desktop-edge-windows",
+      "priority": "p0",
+      "kind": "desktop",
+      "browser": "Microsoft Edge",
+      "os": "Windows",
+      "automationStatus": "device-cloud-ready"
+    },
+    {
+      "id": "desktop-firefox-windows",
+      "priority": "p0",
+      "kind": "desktop",
+      "browser": "Firefox",
+      "os": "Windows",
+      "automationStatus": "device-cloud-ready"
+    },
+    {
+      "id": "desktop-webkit-macos",
+      "priority": "p0",
+      "kind": "desktop",
+      "browser": "WebKit/Safari-class rendering",
+      "os": "macOS",
+      "automationStatus": "provider-specific"
+    },
+    {
+      "id": "real-ios-safari",
+      "priority": "p0",
+      "kind": "real-mobile-device",
+      "browser": "Safari",
+      "os": "iOS",
+      "automationStatus": "device-cloud-ready"
+    },
+    {
+      "id": "real-android-chrome",
+      "priority": "p0",
+      "kind": "real-mobile-device",
+      "browser": "Chrome",
+      "os": "Android",
+      "automationStatus": "device-cloud-ready"
+    },
+    {
+      "id": "real-android-samsung-internet",
+      "priority": "p1",
+      "kind": "real-mobile-device",
+      "browser": "Samsung Internet",
+      "os": "Android",
+      "automationStatus": "provider-availability-check"
+    },
+    {
+      "id": "desktop-arc-macos",
+      "priority": "p1",
+      "kind": "desktop",
+      "browser": "Arc",
+      "os": "macOS",
+      "automationStatus": "manual-or-local-runner"
+    },
+    {
+      "id": "desktop-yandex",
+      "priority": "p1",
+      "kind": "desktop",
+      "browser": "Yandex Browser",
+      "os": "macOS or Windows",
+      "automationStatus": "manual-or-local-runner"
+    },
+    {
+      "id": "telegram-in-app-ios",
+      "priority": "p2",
+      "kind": "in-app-browser",
+      "browser": "Telegram in-app browser",
+      "os": "iOS",
+      "automationStatus": "research-appium-or-manual"
+    },
+    {
+      "id": "telegram-in-app-android",
+      "priority": "p2",
+      "kind": "in-app-browser",
+      "browser": "Telegram in-app browser",
+      "os": "Android",
+      "automationStatus": "research-appium-or-manual"
+    }
+  ],
+  "notes": [
+    "Keep local Playwright checks as the fast deterministic layer.",
+    "Run real-device/browser cloud as a separate workflow after provider credentials exist.",
+    "Do not assume Arc, Yandex Browser, or Telegram in-app browser are automatable through standard Playwright device clouds.",
+    "Use analytics later to decide which P1/P2 browsers remain in the recurring matrix."
+  ]
+}

@@ -1,0 +1,222 @@
+name: AI Mindset Site QA
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: site-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        type: choice
+        required: true
+        default: "biweekly"
+        options:
+          - biweekly
+          - monthly
+          - health
+  schedule:
+    # Biweekly candidate run. GitHub cron has no native every-two-weeks syntax,
+    # so the job below skips odd ISO weeks.
+    - cron: "0 7 * * 1"
+    # Monthly broad sweep: first day of each month at 08:00 UTC.
+    - cron: "0 8 1 * *"
+
+jobs:
+  site-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Determine scheduled run mode
+        id: mode
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event.schedule }}" == "0 8 1 * *" ]]; then
+            echo "mode=monthly" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          week="$(date -u +%V)"
+          if (( 10#$week % 2 == 0 )); then
+            echo "mode=biweekly" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=biweekly" >> "$GITHUB_OUTPUT"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping odd ISO week $week for biweekly cadence."
+          fi
+
+      - name: Restore visual baselines
+        if: steps.mode.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/baselines/screenshots
+          key: visual-baselines-${{ github.run_id }}
+          restore-keys: |
+            visual-baselines-
+
+      - name: Typecheck
+        if: steps.mode.outputs.skip != 'true'
+        run: npm run typecheck
+
+      - name: Run health-only QA
+        if: steps.mode.outputs.skip != 'true' && steps.mode.outputs.mode == 'health'
+        run: npm run qa -- --site all --max-crawl-pages 80
+
+      - name: Run biweekly QA
+        if: steps.mode.outputs.skip != 'true' && steps.mode.outputs.mode == 'biweekly'
+        run: npm run qa:biweekly
+
+      - name: Run monthly QA
+        if: steps.mode.outputs.skip != 'true' && steps.mode.outputs.mode == 'monthly'
+        run: npm run qa:monthly
+
+      - name: Generate dashboard
+        if: steps.mode.outputs.skip != 'true' && always()
+        run: npm run dashboard
+
+      - name: Prepare GitHub Pages site
+        if: steps.mode.outputs.skip != 'true' && always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pages/reports/latest
+
+          if [[ -d reports/latest ]]; then
+            cp -R reports/latest/. pages/reports/latest/
+          else
+            cat > pages/reports/latest/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>AI Mindset QA report unavailable</title>
+          </head>
+          <body>
+            <h1>AI Mindset QA report unavailable</h1>
+            <p>The workflow did not produce reports/latest for this run. Open the GitHub Actions logs for details.</p>
+          </body>
+          </html>
+          HTML
+          fi
+
+          if [[ -d artifacts/latest ]]; then
+            mkdir -p pages/artifacts/latest
+            cp -R artifacts/latest/. pages/artifacts/latest/
+          fi
+
+          if [[ -d artifacts/baselines ]]; then
+            mkdir -p pages/artifacts/baselines
+            cp -R artifacts/baselines/. pages/artifacts/baselines/
+          fi
+
+          cat > pages/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=reports/latest/dashboard.html">
+            <title>AI Mindset QA Dashboards</title>
+          </head>
+          <body>
+            <p><a href="reports/latest/dashboard.html">Open AI Mindset QA Dashboards</a></p>
+            <p><a href="reports/latest/dashboard.production.html">Production dashboard</a></p>
+            <p><a href="reports/latest/dashboard.staging.html">Staging dashboard</a></p>
+          </body>
+          </html>
+          HTML
+
+      - name: Add summary to job
+        if: steps.mode.outputs.skip != 'true' && always()
+        run: |
+          if [[ -f reports/latest/summary.md ]]; then
+            cat reports/latest/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report summary was generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload QA reports
+        if: steps.mode.outputs.skip != 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aim-site-qa-${{ steps.mode.outputs.mode }}-${{ github.run_id }}
+          path: |
+            reports/latest/**
+            artifacts/latest/**
+            artifacts/baselines/**
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Check visual baselines
+        id: baseline-path
+        if: steps.mode.outputs.skip != 'true' && always()
+        shell: bash
+        run: |
+          if [[ -d artifacts/baselines/screenshots ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save visual baselines
+        if: steps.baseline-path.outputs.exists == 'true' && always()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/baselines/screenshots
+          key: visual-baselines-${{ github.run_id }}
+
+      - name: Configure GitHub Pages
+        if: steps.mode.outputs.skip != 'true' && always()
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: steps.mode.outputs.skip != 'true' && always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        if: steps.mode.outputs.skip != 'true' && always()
+        uses: actions/deploy-pages@v4
+
+      - name: Skipped biweekly run
+        if: steps.mode.outputs.skip == 'true'
+        run: echo "Skipped this scheduled run because it is an odd ISO week."

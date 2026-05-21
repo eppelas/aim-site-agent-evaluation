@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run health QA without screenshots
+        run: npm run qa -- --site all --max-crawl-pages 80
+
+      - name: Generate dashboard
+        if: always()
+        run: npm run dashboard
+
+      - name: Add summary to job
+        if: always()
+        run: |
+          if [[ -f reports/latest/summary.md ]]; then
+            cat reports/latest/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report summary was generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aim-site-qa-ci-${{ github.run_id }}
+          path: |
+            reports/latest/**
+          if-no-files-found: warn
+          retention-days: 14

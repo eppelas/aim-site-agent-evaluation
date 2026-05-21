@@ -1,0 +1,26 @@
+{
+  "name": "aim-site-agent-evaluation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Black-box QA and agent-readability evaluation for AI Mindset production and staging websites.",
+  "scripts": {
+    "qa": "tsx src/cli/run.ts",
+    "qa:v0": "tsx src/cli/run.ts --site all --screenshots --screenshot-viewports mobile,desktop --screenshot-limit 12",
+    "qa:biweekly": "tsx src/cli/run.ts --site all --screenshots --screenshot-viewports mobile,desktop --screenshot-limit 12 --max-crawl-pages 80",
+    "qa:monthly": "tsx src/cli/run.ts --site all --screenshots --screenshot-viewports mobile,tablet,desktop,hd --screenshot-limit 0 --max-crawl-pages 120",
+    "dashboard": "tsx src/dashboard/generate.ts",
+    "typecheck": "tsc --noEmit",
+    "playwright:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^25.0.0",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

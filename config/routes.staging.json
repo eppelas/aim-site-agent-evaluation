@@ -1,0 +1,56 @@
+{
+  "site": "staging",
+  "baseUrl": "https://staging.aimindset.org/",
+  "discovery": {
+    "strategy": ["seed", "crawl"],
+    "sitemap": null
+  },
+  "seedPaths": [
+    "/",
+    "/space/",
+    "/for-teams/",
+    "/non-profit/",
+    "/research/",
+    "/garden/",
+    "/labs/s26-summer-lab/",
+    "/labs/summer-main-lab/",
+    "/labs/health-sprint/",
+    "/labs/spring-main-lab/",
+    "/labs/s26-spring-lab/",
+    "/labs/test-w26-main-lab/",
+    "/labs/w26-main-lab/"
+  ],
+  "knownFindings": [
+    {
+      "path": "/sitemap.xml",
+      "finding": "No staging sitemap during planning crawl.",
+      "expectedResolution": "Add sitemap before migration launch."
+    },
+    {
+      "path": "/llms.txt",
+      "finding": "No agent index during planning crawl.",
+      "expectedResolution": "Add llms.txt and link it from HTML head."
+    },
+    {
+      "path": "/automation-lab",
+      "finding": "Old production-like route missing on staging.",
+      "expectedResolution": "Map, redirect, or mark retired."
+    },
+    {
+      "path": "/sprint-pos",
+      "finding": "Old production-like route missing on staging.",
+      "expectedResolution": "Map, redirect, or mark retired."
+    },
+    {
+      "path": "/labs/w26",
+      "finding": "Old lab route missing on staging.",
+      "expectedResolution": "Map, redirect, or mark retired."
+    }
+  ],
+  "canonicalizationChecks": [
+    {
+      "pattern": "/labs/:slug",
+      "expected": "Redirect to HTTPS trailing-slash canonical URL without http downgrade."
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "site": "production",
+  "baseUrl": "https://aimindset.org/",
+  "discovery": {
+    "strategy": ["sitemap", "crawl"],
+    "sitemap": "https://aimindset.org/sitemap.xml"
+  },
+  "knownFindings": [
+    {
+      "path": "/ai-mindset-lab",
+      "finding": "Sitemap URL returned 404 during planning crawl.",
+      "expectedResolution": "Remove, redirect, or mark as intentionally retired."
+    },
+    {
+      "path": "/job-human-assistant",
+      "finding": "Sitemap URL returned 404 during planning crawl.",
+      "expectedResolution": "Remove, redirect, or mark as intentionally retired."
+    },
+    {
+      "path": "/new-lab-ai",
+      "finding": "Sitemap URL returned 404 during planning crawl.",
+      "expectedResolution": "Remove, redirect, or mark as intentionally retired."
+    },
+    {
+      "path": "/new-site",
+      "finding": "Sitemap URL returned 404 during planning crawl.",
+      "expectedResolution": "Remove, redirect, or mark as intentionally retired."
+    },
+    {
+      "path": "/sprint-pos/sprint-calendar-march-2026-4",
+      "finding": "Sitemap URL returned 404 during planning crawl.",
+      "expectedResolution": "Remove, redirect, or mark as intentionally retired."
+    }
+  ],
+  "seedPaths": [
+    "/",
+    "/ai-mindset-ai",
+    "/ai-mindset-community",
+    "/ai-mindset-consulting",
+    "/ai-mindset-lab-x26",
+    "/ai-mindset-w25",
+    "/automation-lab",
+    "/confpolicy",
+    "/garden",
+    "/non-profit",
+    "/oferta",
+    "/research",
+    "/sprint-pos"
+  ]
+}

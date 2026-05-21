@@ -1,0 +1,76 @@
+{
+  "mappings": [
+    {
+      "productionPath": "/",
+      "stagingPath": "/",
+      "intent": "Homepage / main AI Mindset landing",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/ai-mindset-community",
+      "stagingPath": "/space/",
+      "intent": "Community / Space page",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/ai-mindset-consulting",
+      "stagingPath": "/for-teams/",
+      "intent": "Teams / consulting page",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/non-profit",
+      "stagingPath": "/non-profit/",
+      "intent": "Non-profit page",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/research",
+      "stagingPath": "/research/",
+      "intent": "Research AI Lab page",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/garden",
+      "stagingPath": "/garden/",
+      "intent": "Digital garden / Context GAP report",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/automation-lab",
+      "stagingPath": null,
+      "intent": "Automation / agents lab page",
+      "decision": "manual-review"
+    },
+    {
+      "productionPath": "/sprint-pos",
+      "stagingPath": null,
+      "intent": "POS sprint page",
+      "decision": "manual-review"
+    },
+    {
+      "productionPath": "/ai-mindset-lab-x26",
+      "stagingPath": "/labs/w26-main-lab/",
+      "intent": "Current/previous main lab candidate mapping",
+      "decision": "manual-review"
+    },
+    {
+      "productionPath": "/ai-mindset-ai/ai-mindset-researchai-lab",
+      "stagingPath": "/research/",
+      "intent": "Legacy nested research lab URL",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/ai-mindset-ai/ai-mindset-space",
+      "stagingPath": "/space/",
+      "intent": "Legacy nested space URL",
+      "decision": "mapped"
+    },
+    {
+      "productionPath": "/ai-mindset-ai/ai-mindset-non-profit",
+      "stagingPath": "/non-profit/",
+      "intent": "Legacy nested non-profit URL",
+      "decision": "mapped"
+    }
+  ]
+}

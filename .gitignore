@@ -1,0 +1,44 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+pages/
+.cache/
+.tmp/
+
+# QA run artifacts
+artifacts/*
+!artifacts/.gitkeep
+reports/*
+!reports/.gitkeep
+screenshots/
+diffs/
+traces/
+videos/
+playwright-report/
+test-results/
+lighthouse/
+webpagetest/
+sitebulb-exports/
+screaming-frog-exports/
+
+# Large generated files
+*.har
+*.trace
+*.zip
+*.mp4
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/

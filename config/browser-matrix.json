@@ -1,0 +1,50 @@
+{
+  "engines": ["chromium", "webkit", "gecko"],
+  "viewports": {
+    "core": [
+      { "name": "android-narrow", "width": 360, "height": 800 },
+      { "name": "iphone-modern", "width": 390, "height": 844 },
+      { "name": "iphone-large", "width": 414, "height": 896 },
+      { "name": "ipad-classic", "width": 768, "height": 1024 },
+      { "name": "ipad-air", "width": 820, "height": 1180 },
+      { "name": "small-laptop", "width": 1366, "height": 768 },
+      { "name": "scaled-laptop", "width": 1536, "height": 864 },
+      { "name": "desktop-hd", "width": 1920, "height": 1080 }
+    ],
+    "monthly": [
+      { "name": "android-modern", "width": 393, "height": 873 },
+      { "name": "tablet-landscape", "width": 1280, "height": 800 },
+      { "name": "macbook", "width": 1440, "height": 900 },
+      { "name": "desktop-qhd", "width": 2560, "height": 1440 }
+    ]
+  },
+  "browsers": {
+    "p0": [
+      "Google Chrome desktop",
+      "Google Chrome Android",
+      "Safari macOS",
+      "Safari iOS",
+      "Firefox desktop",
+      "Microsoft Edge desktop"
+    ],
+    "p1": [
+      "Arc macOS",
+      "Yandex Browser desktop",
+      "Yandex Browser Android",
+      "Samsung Internet Android",
+      "Brave",
+      "Opera"
+    ],
+    "p2AnalyticsDriven": [
+      "Telegram in-app browser iOS",
+      "Telegram in-app browser Android",
+      "Instagram in-app browser",
+      "Facebook in-app browser"
+    ]
+  },
+  "notes": [
+    "Track branded browsers separately from browser engines.",
+    "Use BrowserStack or equivalent for real-device sweeps.",
+    "Use analytics later to reduce or reprioritize the matrix."
+  ]
+}
