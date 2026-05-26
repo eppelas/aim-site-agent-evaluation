@@ -58,6 +58,10 @@ function renderSummary(report: RunReport): string {
       lines.push(`- Status: \`${finding.status}\``);
       if (finding.expected) lines.push(`- Expected: ${finding.expected}`);
       if (finding.actual) lines.push(`- Actual: ${finding.actual}`);
+      if (finding.remediation) {
+        lines.push(`- Recommended owner: \`${finding.remediation.owner}\``);
+        lines.push(`- Recommended fix: ${finding.remediation.summary}`);
+      }
       lines.push("");
     }
   }

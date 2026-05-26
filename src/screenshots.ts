@@ -1,15 +1,16 @@
 import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { chromium } from "@playwright/test";
+import { chromium, type Page } from "@playwright/test";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
-import type { DiscoveredRoute, ScreenshotArtifact, SiteConfig, ViewportConfig, VisualDiffResult } from "./types.js";
+import type { DiscoveredRoute, ScreenshotArtifact, ScreenshotImageAnalysis, SiteConfig, ViewportConfig, VisualDiffResult } from "./types.js";
 import { safeFilenameFromUrl } from "./url-utils.js";
 
 const pixelmatchThreshold = 0.15;
 const failureThresholdRatio = 0.01;
 const failureThresholdPixels = 2500;
+const blankRegionThresholdPx = 600;
 
 export interface ScreenshotOptions {
   outputDir: string;
@@ -51,6 +52,9 @@ export async function captureScreenshots(
           await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
           await page.screenshot({ path: filePath, fullPage: true, animations: "disabled", timeout: 20000 });
           const metadata = await fileMetadata(filePath);
+          const blankRegionRetry = metadata.image?.largestBlankRegion
+            ? await recaptureAfterScrollSettle(page, filePath, viewport)
+            : undefined;
           const baselinePath = options.baselineDir
             ? path.join(options.baselineDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.png`)
             : undefined;
@@ -71,6 +75,8 @@ export async function captureScreenshots(
             baselineStatus: comparison.baselineStatus,
             byteSize: metadata.byteSize,
             sha256: metadata.sha256,
+            image: metadata.image,
+            blankRegionRetry,
             visualDiff: comparison.visualDiff
           });
         } catch (error) {
@@ -131,11 +137,206 @@ async function compareOrCreateBaseline(
   }
 }
 
-async function fileMetadata(filePath: string): Promise<{ byteSize: number; sha256: string }> {
+async function fileMetadata(filePath: string): Promise<{ byteSize: number; sha256: string; image?: ScreenshotImageAnalysis }> {
   const [stats, bytes] = await Promise.all([stat(filePath), readFile(filePath)]);
   return {
     byteSize: stats.size,
-    sha256: createHash("sha256").update(bytes).digest("hex")
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    image: analyzePng(bytes)
+  };
+}
+
+async function recaptureAfterScrollSettle(
+  page: Page,
+  originalFilePath: string,
+  viewport: ViewportConfig
+): Promise<NonNullable<ScreenshotArtifact["blankRegionRetry"]>> {
+  const parsed = path.parse(originalFilePath);
+  const retryPath = path.join(parsed.dir, `${parsed.name}.scroll-settle${parsed.ext}`);
+  try {
+    await settlePageForScreenshot(page, viewport);
+    await page.screenshot({ path: retryPath, fullPage: true, animations: "disabled", timeout: 20000 });
+    const metadata = await fileMetadata(retryPath);
+    return {
+      strategy: "scroll-settle-recapture",
+      status: metadata.image?.largestBlankRegion ? "still-blank-after-scroll" : "resolved-after-scroll",
+      filePath: retryPath,
+      image: metadata.image
+    };
+  } catch (error) {
+    return {
+      strategy: "scroll-settle-recapture",
+      status: "failed",
+      filePath: retryPath,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function analyzePng(bytes: Buffer): ScreenshotImageAnalysis | undefined {
+  try {
+    const png = PNG.sync.read(bytes);
+    const totalPixels = png.width * png.height;
+    if (totalPixels === 0) {
+      return {
+        width: png.width,
+        height: png.height,
+        totalPixels,
+        sampledPixels: 0,
+        nonWhiteRatio: 0,
+        nonTransparentRatio: 0,
+        dominantColorRatio: 0,
+        uniqueColorCount: 0,
+        isProbablyBlank: true,
+        blankRegions: [],
+        blankRegionThresholdPx
+      };
+    }
+
+    const blankRegions = findBlankRegions(png, blankRegionThresholdPx);
+    const largestBlankRegion = blankRegions.sort((a, b) => b.height - a.height)[0];
+    const maxSamples = 120000;
+    const stride = Math.max(1, Math.floor(totalPixels / maxSamples));
+    const colorCounts = new Map<string, number>();
+    let sampledPixels = 0;
+    let nonWhitePixels = 0;
+    let nonTransparentPixels = 0;
+
+    for (let pixelIndex = 0; pixelIndex < totalPixels; pixelIndex += stride) {
+      const offset = pixelIndex << 2;
+      const red = png.data[offset];
+      const green = png.data[offset + 1];
+      const blue = png.data[offset + 2];
+      const alpha = png.data[offset + 3];
+      const colorKey = `${red},${green},${blue},${alpha}`;
+      colorCounts.set(colorKey, (colorCounts.get(colorKey) ?? 0) + 1);
+      sampledPixels += 1;
+
+      if (alpha > 8) nonTransparentPixels += 1;
+      if (alpha > 8 && (red < 246 || green < 246 || blue < 246)) nonWhitePixels += 1;
+    }
+
+    const dominantColorCount = Math.max(0, ...colorCounts.values());
+    const nonWhiteRatio = sampledPixels === 0 ? 0 : nonWhitePixels / sampledPixels;
+    const nonTransparentRatio = sampledPixels === 0 ? 0 : nonTransparentPixels / sampledPixels;
+    const dominantColorRatio = sampledPixels === 0 ? 0 : dominantColorCount / sampledPixels;
+    const isProbablyBlank =
+      sampledPixels === 0 ||
+      nonTransparentRatio < 0.01 ||
+      (dominantColorRatio > 0.995 && nonWhiteRatio < 0.002 && colorCounts.size <= 8);
+
+    return {
+      width: png.width,
+      height: png.height,
+      totalPixels,
+      sampledPixels,
+      nonWhiteRatio,
+      nonTransparentRatio,
+      dominantColorRatio,
+      uniqueColorCount: colorCounts.size,
+      isProbablyBlank,
+      largestBlankRegion,
+      blankRegions,
+      blankRegionThresholdPx
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function settlePageForScreenshot(page: Page, viewport: ViewportConfig): Promise<void> {
+  await page.waitForTimeout(300);
+  const scrollHeight = await page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+  const step = Math.max(300, Math.floor(viewport.height * 0.75));
+
+  for (let y = 0; y < scrollHeight; y += step) {
+    await page.evaluate((scrollY) => window.scrollTo(0, scrollY), y);
+    await page.waitForTimeout(120);
+  }
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(300);
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => undefined);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300);
+}
+
+function findBlankRegions(png: PNG, minHeight: number): NonNullable<ScreenshotImageAnalysis["blankRegions"]> {
+  const regions: NonNullable<ScreenshotImageAnalysis["blankRegions"]> = [];
+  let active:
+    | {
+        startY: number;
+        endY: number;
+        dominantColorRatioTotal: number;
+        uniqueColorCountTotal: number;
+        rows: number;
+      }
+    | undefined;
+
+  for (let y = 0; y < png.height; y += 1) {
+    const row = analyzeRow(png, y);
+    const isBlankRow = row.dominantColorRatio >= 0.985 && row.uniqueColorCount <= 6;
+
+    if (isBlankRow) {
+      if (!active) {
+        active = {
+          startY: y,
+          endY: y,
+          dominantColorRatioTotal: 0,
+          uniqueColorCountTotal: 0,
+          rows: 0
+        };
+      }
+      active.endY = y;
+      active.dominantColorRatioTotal += row.dominantColorRatio;
+      active.uniqueColorCountTotal += row.uniqueColorCount;
+      active.rows += 1;
+    } else if (active) {
+      pushBlankRegion(regions, active, minHeight);
+      active = undefined;
+    }
+  }
+
+  if (active) pushBlankRegion(regions, active, minHeight);
+  return regions;
+}
+
+function pushBlankRegion(
+  regions: NonNullable<ScreenshotImageAnalysis["blankRegions"]>,
+  region: { startY: number; endY: number; dominantColorRatioTotal: number; uniqueColorCountTotal: number; rows: number },
+  minHeight: number
+): void {
+  const height = region.endY - region.startY + 1;
+  if (height < minHeight || region.rows === 0) return;
+  regions.push({
+    startY: region.startY,
+    endY: region.endY,
+    height,
+    averageDominantColorRatio: region.dominantColorRatioTotal / region.rows,
+    averageUniqueColorCount: region.uniqueColorCountTotal / region.rows
+  });
+}
+
+function analyzeRow(png: PNG, y: number): { dominantColorRatio: number; uniqueColorCount: number } {
+  const colorCounts = new Map<string, number>();
+  const stride = Math.max(1, Math.floor(png.width / 240));
+  let samples = 0;
+
+  for (let x = 0; x < png.width; x += stride) {
+    const offset = (png.width * y + x) << 2;
+    const red = Math.round(png.data[offset] / 8) * 8;
+    const green = Math.round(png.data[offset + 1] / 8) * 8;
+    const blue = Math.round(png.data[offset + 2] / 8) * 8;
+    const alpha = Math.round(png.data[offset + 3] / 8) * 8;
+    const key = `${red},${green},${blue},${alpha}`;
+    colorCounts.set(key, (colorCounts.get(key) ?? 0) + 1);
+    samples += 1;
+  }
+
+  const dominantColorCount = Math.max(0, ...colorCounts.values());
+  return {
+    dominantColorRatio: samples === 0 ? 0 : dominantColorCount / samples,
+    uniqueColorCount: colorCounts.size
   };
 }
 

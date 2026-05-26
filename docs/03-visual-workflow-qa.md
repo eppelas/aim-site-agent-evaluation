@@ -69,6 +69,25 @@ Current V0 comparison uses local pixel diff:
 
 This is more useful than hash-only comparison, but it is still not as smart as Percy, Argos, or Applitools. Dynamic blocks, animations, embedded widgets, and time-sensitive content may still need masking or vendor visual AI.
 
+## Large Blank Region Review
+
+Full-page screenshots are captured raw first: the runner loads the page, waits for normal browser readiness, and saves the screenshot without scrolling through the page to force lazy content.
+
+If the raw screenshot contains a mostly empty vertical band of at least `600px`, the runner creates a `screenshot` finding and then performs one diagnostic recapture:
+
+1. Scroll through the page in viewport-sized steps.
+2. Wait briefly for lazy sections, embeds, and images to settle.
+3. Scroll back to the top.
+4. Save a second screenshot with `.scroll-settle.png` in the filename.
+
+Interpretation:
+
+- `resolved-after-scroll`: the blank block disappeared after the diagnostic scroll. Treat this as a lazy-load/readiness issue or screenshot-timing risk, not yet proof that the live page is permanently broken.
+- `still-blank-after-scroll`: the blank block remained after the diagnostic scroll. Treat this as a likely real visual/content problem in that viewport.
+- `failed`: the diagnostic retry could not complete. Review the original screenshot and browser logs.
+
+Important policy: do not force the lazy-scroll path for every screenshot. It would hide the initial user-visible loading state and make the first screenshot less honest. The scroll-settle capture is only a second artifact for screenshots that already look suspicious.
+
 ## Workflow QA
 
 The workflow crawler should:
@@ -94,6 +113,14 @@ Expected destination examples:
 - YouTube: official AI Mindset channel or configured video URL.
 - Payment/waitlist: configured payment or waitlist host.
 
+V1 implementation:
+
+- CTA rules live in `config/cta-rules.json`.
+- Rules match the visible link text, not the whole surrounding section, to avoid classifying unrelated footer/card links as CTAs.
+- Each rule declares expected intents, optional allowed hosts, HTTPS requirements, severity, and owner.
+- Findings include source page, source anchor when available, link text, section, target URL, and the matched rule.
+- Current useful signal: production application-form CTAs that route through `google.com/url?...` are flagged as unknown workflow destinations.
+
 ## Evidence
 
 For every failure, store:
@@ -105,3 +132,12 @@ For every failure, store:
 - screenshot;
 - trace if browser workflow failed;
 - severity and suggested owner.
+
+For large blank regions, also store:
+
+- blank region y-range;
+- blank region height;
+- dominant/unique color metrics for the blank rows;
+- original screenshot path;
+- scroll-settle retry screenshot path, if created;
+- retry status.

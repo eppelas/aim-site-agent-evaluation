@@ -16,12 +16,39 @@ The migration report should show:
 
 ## Route Statuses
 
-- `mapped`: production URL has a staging equivalent.
-- `missing`: no staging equivalent exists yet.
+- `mapped-ok`: production URL has a staging equivalent and the current semantic similarity check is acceptable.
+- `content-mismatch`: mapped pages exist but their headings/top terms/title look too different for a safe automatic migration decision.
+- `staging-missing`: no staging equivalent exists yet.
+- `production-broken`: production URL in the migration map is already broken.
 - `retired`: intentionally removed; needs redirect or archive decision.
-- `changed`: equivalent exists but content/intent changed significantly.
 - `redirect-needed`: old URL needs production redirect after launch.
 - `manual-review`: ambiguous mapping.
+
+## Content Similarity V1
+
+The migration report now compares mapped production/staging pages by lightweight semantic fingerprints:
+
+- page title token overlap;
+- heading token overlap;
+- visible-text top-term overlap.
+
+The dashboard stores and displays:
+
+- similarity percent;
+- grade: `high`, `medium`, `low`, or `unknown`;
+- shared top terms;
+- production/staging titles and heading samples in `report.json`.
+
+Current threshold:
+
+- below `18/100` becomes `content-mismatch` for mapped routes;
+- manual-review routes still show similarity evidence but remain manual-review.
+
+Latest local signal:
+
+- production `/` to staging `/` scored `8/100` and is flagged as `content-mismatch`;
+- `/ai-mindset-community` to `/space/`, `/ai-mindset-consulting` to `/for-teams/`, `/research` to `/research/`, and `/garden` to `/garden/` scored high similarity;
+- `/ai-mindset-lab-x26` to `/labs/w26-main-lab/` scored low similarity but remains manual-review because the mapping decision is already ambiguous.
 
 ## Current Production Sources
 

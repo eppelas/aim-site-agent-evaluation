@@ -4,18 +4,42 @@ The dashboard should behave like a QA calendar, evidence board, and launch readi
 
 ## Primary Views
 
-V0 implementation status: `reports/latest/dashboard.html` is generated from `reports/latest/report.json` by `npm run dashboard`.
+V1 implementation status: `reports/latest/dashboard.html` is generated from `reports/latest/report.json` by `npm run dashboard`.
 
-Current V0 includes:
+Current V1 includes:
 
 - summary cards;
 - simple checks timeline;
 - run status drilldown with failure reason, top findings, local rerun command, and GitHub Actions rerun command;
+- history index at `reports/history/index.html`;
+- per-run archive dashboards under `reports/history/<runId>/`;
 - grouped findings board;
 - screenshot gallery;
+- agent-readability score table;
+- migration content similarity table;
 - checked-pages table.
 
-Future versions should add persistent history across runs, filtering, approvals, migration compare, and trend charts.
+Future versions should add filtering, approvals, trend charts, and external durable storage.
+
+### History View
+
+The local/GitHub Pages history layer stores:
+
+- `reports/latest/*` as the current run pointer;
+- `reports/history/<runId>/report.json`;
+- `reports/history/<runId>/summary.md`;
+- `reports/history/<runId>/dashboard.html`;
+- `reports/history/<runId>/dashboard.production.html` when production is included;
+- `reports/history/<runId>/dashboard.staging.html` when staging is included;
+- `reports/history/index.html` as the archive index;
+- `reports/history/index.json` as the machine-readable archive index;
+- `reports/latest/storage-manifest.json` as the current-run upload contract;
+- `reports/history/storage-manifest.json` as the full local-history upload contract;
+- `artifacts/history/<runId>/...` for screenshot/diff artifacts from screenshot runs.
+
+`latest` dashboards link to the history index. Historical dashboards link back to latest.
+
+This is not a permanent object store yet. GitHub Pages publishes the generated history that exists in the workflow workspace, while GitHub Actions artifacts retain uploaded files for the configured retention window. The generated storage manifests include file size, SHA-256, type, run ID, and future destination keys so a later V2 can mirror history to R2/S3, Google Drive, or a database-backed dashboard.
 
 ### Calendar View
 

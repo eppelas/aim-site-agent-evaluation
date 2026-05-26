@@ -74,7 +74,12 @@ Generated output:
 - `reports/latest/dashboard.html`
 - `reports/latest/dashboard.production.html`
 - `reports/latest/dashboard.staging.html`
-- `artifacts/latest/screenshots/...`
+- `reports/latest/storage-manifest.json`
+- `reports/history/index.html`
+- `reports/history/index.json`
+- `reports/history/storage-manifest.json`
+- `reports/history/<runId>/...`
+- `artifacts/history/<runId>/screenshots/...`
 
 These generated outputs are ignored by git except for placeholder `.gitkeep` files.
 
@@ -84,9 +89,16 @@ Generate the static dashboard from the latest report:
 npm run dashboard
 ```
 
+Run the guarded Sanity/Astro content-contract preflight:
+
+```bash
+npm run cms:contract
+```
+
 Current dashboard sections:
 
 - index page with separate production and staging dashboards;
+- history index with per-run archived dashboards;
 - summary cards;
 - checks timeline;
 - run status drilldown with failure reason, top findings, and local/GitHub rerun commands;
@@ -131,7 +143,8 @@ Scheduled modes:
 The workflow uploads run artifacts:
 
 - `reports/latest/**`
-- `artifacts/latest/**`
+- `reports/history/**`
+- `artifacts/history/**`
 - `artifacts/baselines/**`
 
 The scheduled/manual QA workflow also publishes GitHub Pages from the latest run:
@@ -139,8 +152,13 @@ The scheduled/manual QA workflow also publishes GitHub Pages from the latest run
 - `/reports/latest/dashboard.html` - index dashboard.
 - `/reports/latest/dashboard.production.html` - production-only dashboard.
 - `/reports/latest/dashboard.staging.html` - staging-only dashboard.
+- `/reports/history/index.html` - archived run history.
 
 Visual baselines are restored and saved through GitHub Actions cache so the first screenshot run creates the comparison base, and later screenshot runs can show local pixel diffs in the dashboard.
+
+Durable storage is prepared but not connected yet. The dashboard generator writes upload manifests with file sizes, SHA-256 hashes, destination keys, and retention notes so a future R2/S3-compatible sync job can mirror history outside GitHub Actions artifacts.
+`npm run sync:history` is the guarded sync job: it performs a dry run with `-- --dry-run`, skips cleanly without storage secrets, and uploads to R2/S3-compatible storage once credentials are configured.
+`npm run cms:contract` is the guarded Sanity/Astro preflight: it skips cleanly without `SANITY_PROJECT_ID` and `SANITY_DATASET`, and reports field-group coverage once those environment variables exist.
 
 The workflows are present locally but will only run after this repo is pushed to GitHub and Actions/Pages are enabled.
 
@@ -149,6 +167,8 @@ See:
 - `docs/11-github-actions-task-list.md`
 - `docs/12-github-actions-operations.md`
 - `docs/13-device-cloud-integration.md`
+- `docs/14-durable-history-storage.md`
+- `docs/15-sanity-astro-content-contract.md`
 
 ## Repository Layout
 

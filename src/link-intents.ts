@@ -1,19 +1,24 @@
 import type { Finding, LinkIntentRecord, PageCheck } from "./types.js";
+import { routeKey } from "./url-utils.js";
 
 export function collectLinkIntents(checks: PageCheck[]): LinkIntentRecord[] {
   const records: LinkIntentRecord[] = [];
   const seen = new Set<string>();
 
   for (const check of checks) {
-    for (const targetUrl of check.externalLinks) {
-      const key = `${check.url}::${targetUrl}`;
+    const externalOutgoingLinks = check.outgoingLinks?.filter((link) => !link.isInternal) ?? [];
+    for (const link of externalOutgoingLinks) {
+      const key = `${check.url}::${routeKey(link.targetUrl)}::${link.text ?? ""}::${link.sourceAnchorUrl ?? ""}`;
       if (seen.has(key)) continue;
       seen.add(key);
       records.push({
         siteId: check.siteId,
         sourceUrl: check.url,
-        targetUrl,
-        ...classifyExternalLink(targetUrl)
+        targetUrl: link.targetUrl,
+        sourceText: link.text,
+        sourceSection: link.section,
+        sourceAnchorUrl: link.sourceAnchorUrl,
+        ...classifyExternalLink(link.targetUrl)
       });
     }
   }
@@ -53,7 +58,7 @@ export function linkIntentFindings(linkIntents: LinkIntentRecord[], startIndex: 
   return findings;
 }
 
-function classifyExternalLink(targetUrl: string): Pick<LinkIntentRecord, "intent" | "confidence"> {
+export function classifyExternalLink(targetUrl: string): Pick<LinkIntentRecord, "intent" | "confidence"> {
   const parsed = new URL(targetUrl);
   const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
   const path = parsed.pathname.toLowerCase();
@@ -65,6 +70,7 @@ function classifyExternalLink(targetUrl: string): Pick<LinkIntentRecord, "intent
 
   if (host.endsWith("bothelp.io")) return { intent: "telegram-bot-routing", confidence: "known" };
   if (host === "tally.so") return { intent: "form", confidence: "known" };
+  if (isPaymentHost(host)) return { intent: "payment", confidence: "known" };
   if (host === "docs.google.com") return { intent: "document", confidence: "known" };
   if (host === "youtube.com" || host === "youtu.be") return { intent: "youtube", confidence: "known" };
   if (host.includes("podcast") || host.includes("transistor.fm")) return { intent: "podcast", confidence: "known" };
@@ -78,4 +84,22 @@ function classifyExternalLink(targetUrl: string): Pick<LinkIntentRecord, "intent
   if (host.includes("luma.com")) return { intent: "event", confidence: "known" };
 
   return { intent: "unknown", confidence: "unknown" };
+}
+
+function isPaymentHost(host: string): boolean {
+  return [
+    "buy.stripe.com",
+    "checkout.stripe.com",
+    "stripe.com",
+    "pay.yookassa.ru",
+    "yookassa.ru",
+    "yoomoney.ru",
+    "cloudpayments.ru",
+    "pay.cloudpayments.ru",
+    "prodamus.ru",
+    "securepay.tinkoff.ru",
+    "tinkoff.ru",
+    "robokassa.ru",
+    "uniteller.ru"
+  ].some((domain) => host === domain || host.endsWith(`.${domain}`));
 }

@@ -1,0 +1,112 @@
+{
+  "rules": [
+    {
+      "id": "payment-cta",
+      "description": "Payment CTAs should lead to a payment provider, not a generic page or stale form.",
+      "matchText": [
+        "\\bpay\\b",
+        "\\bpayment\\b",
+        "\\bcheckout\\b",
+        "оплат",
+        "купить",
+        "заплат"
+      ],
+      "expectedIntents": ["payment"],
+      "allowedHosts": [
+        "buy.stripe.com",
+        "checkout.stripe.com",
+        "stripe.com",
+        "pay.yookassa.ru",
+        "yookassa.ru",
+        "yoomoney.ru",
+        "cloudpayments.ru",
+        "pay.cloudpayments.ru",
+        "prodamus.ru",
+        "securepay.tinkoff.ru",
+        "tinkoff.ru",
+        "robokassa.ru",
+        "uniteller.ru"
+      ],
+      "requireHttps": true,
+      "severity": "high",
+      "owner": "engineering"
+    },
+    {
+      "id": "application-form-cta",
+      "description": "Application and registration CTAs should lead to an application form, payment checkout, Telegram bot, waitlist, or event registration.",
+      "matchText": [
+        "apply",
+        "application",
+        "register",
+        "registration",
+        "enroll",
+        "sign up",
+        "join waitlist",
+        "заявк",
+        "регистрац",
+        "подать",
+        "запис",
+        "лист ожидания",
+        "анкета"
+      ],
+      "expectedIntents": ["form", "payment", "telegram", "telegram-bot", "telegram-bot-routing", "waitlist", "event", "document", "knowledge-base", "related-site", "internal-page"],
+      "requireHttps": true,
+      "severity": "high",
+      "owner": "content"
+    },
+    {
+      "id": "telegram-cta",
+      "description": "Telegram CTAs should lead to Telegram or BotHelp routing.",
+      "matchText": [
+        "telegram",
+        "телеграм",
+        "(^|[^а-яёa-z])чат([^а-яёa-z]|$)",
+        "(^|[^а-яёa-z])канал([^а-яёa-z]|$)",
+        "(^|[^а-яёa-z])бот([^а-яёa-z]|$)"
+      ],
+      "expectedIntents": ["telegram", "telegram-bot", "telegram-bot-routing"],
+      "allowedHosts": ["t.me", "telegram.me", "r.bothelp.io"],
+      "requireHttps": false,
+      "severity": "medium",
+      "owner": "content"
+    },
+    {
+      "id": "event-cta",
+      "description": "Event CTAs should lead to a known event platform or active event registration surface.",
+      "matchText": [
+        "event",
+        "meetup",
+        "webinar",
+        "workshop",
+        "мероприят",
+        "встреч",
+        "вебинар",
+        "воркшоп"
+      ],
+      "expectedIntents": ["event", "form", "telegram-bot", "telegram-bot-routing"],
+      "allowedHosts": ["luma.com", "tally.so", "r.bothelp.io", "t.me", "telegram.me"],
+      "requireHttps": true,
+      "severity": "medium",
+      "owner": "content"
+    },
+    {
+      "id": "youtube-cta",
+      "description": "Video/watch CTAs should lead to YouTube or another configured media surface.",
+      "matchText": [
+        "youtube",
+        "watch",
+        "video",
+        "recording",
+        "ютуб",
+        "видео",
+        "запись",
+        "посмотреть"
+      ],
+      "expectedIntents": ["youtube", "podcast", "document", "knowledge-base"],
+      "allowedHosts": ["youtube.com", "youtu.be", "podcast.aimindset.ru", "docs.google.com", "notion.site"],
+      "requireHttps": true,
+      "severity": "medium",
+      "owner": "content"
+    }
+  ]
+}

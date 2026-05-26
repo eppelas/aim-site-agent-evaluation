@@ -1,4 +1,4 @@
-import type { AgentSurface } from "./types.js";
+import type { AgentReadabilityScore, AgentSurface, PageTextFingerprint } from "./types.js";
 
 export interface ExtractedAnchorLink {
   href: string;
@@ -67,7 +67,7 @@ export function extractAgentSurface(html: string, baseUrl: string): AgentSurface
     .map((link) => normalizeHref(link.href, baseUrl))
     .filter((href): href is string => Boolean(href));
 
-  return {
+  const surface = {
     hasCanonical: linkTags.some((link) => link.rel.includes("canonical")),
     markdownAlternates,
     llmsLinks,
@@ -77,6 +77,11 @@ export function extractAgentSurface(html: string, baseUrl: string): AgentSurface
     h1Count: countMatches(html, /<h1\b/gi),
     hasMetaDescription: /<meta\b[^>]*(?:name=["']description["'][^>]*content=|content=["'][^"']+["'][^>]*name=["']description["'])/i.test(html)
   };
+
+  return {
+    ...surface,
+    readability: scoreAgentSurface(surface)
+  };
 }
 
 export function extractTitle(html: string): string | null {
@@ -85,11 +90,69 @@ export function extractTitle(html: string): string | null {
   return decodeHtml(stripTags(match[1]).replace(/\s+/g, " ").trim()) || null;
 }
 
-export function extractDateTokens(html: string): string[] {
-  const text = stripNonContent(html)
+export function extractTextFingerprint(html: string): PageTextFingerprint {
+  const headings = extractHeadings(html);
+  const h1Texts = extractHeadings(html, 1);
+  const text = extractVisibleText(html);
+  return buildTextFingerprint(text, headings, h1Texts);
+}
+
+export function extractMarkdownFingerprint(markdown: string): PageTextFingerprint {
+  const headings: string[] = [];
+  const h1Texts: string[] = [];
+  const headingPattern = /^(#{1,6})\s+(.+)$/gm;
+  let headingMatch: RegExpExecArray | null;
+
+  while ((headingMatch = headingPattern.exec(markdown)) !== null) {
+    const text = cleanMarkdownText(headingMatch[2]);
+    if (!text) continue;
+    headings.push(text);
+    if (headingMatch[1] === "#") h1Texts.push(text);
+  }
+
+  return buildTextFingerprint(stripMarkdownSyntax(markdown), headings, h1Texts);
+}
+
+function buildTextFingerprint(text: string, headings: string[], h1Texts: string[]): PageTextFingerprint {
+  const termCounts = new Map<string, number>();
+  for (const term of tokenizeContent(text)) {
+    termCounts.set(term, (termCounts.get(term) ?? 0) + 1);
+  }
+  const topTerms = [...termCounts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"))
+    .slice(0, 80)
+    .map(([term]) => term);
+
+  return {
+    h1Texts,
+    headings,
+    topTerms,
+    wordCount: [...termCounts.values()].reduce((sum, count) => sum + count, 0),
+    textSample: text.slice(0, 800)
+  };
+}
+
+function stripMarkdownSyntax(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/~~~[\s\S]*?~~~/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/[*_~]+/g, "")
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cleanMarkdownText(input: string): string {
+  return stripMarkdownSyntax(input).replace(/\s+/g, " ").trim();
+}
+
+export function extractDateTokens(html: string): string[] {
+  const text = extractVisibleText(html);
   const patterns = [
     /\b\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b/giu,
     /\b(?:январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)\b/giu,
@@ -105,6 +168,13 @@ export function extractDateTokens(html: string): string[] {
   }
 
   return [...tokens].sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+export function extractVisibleText(html: string): string {
+  return stripNonContent(html)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function extractSitemapLocs(xml: string): string[] {
@@ -194,4 +264,93 @@ function countMatches(input: string, pattern: RegExp): number {
   let count = 0;
   while (pattern.exec(input) !== null) count += 1;
   return count;
+}
+
+function extractHeadings(html: string, level?: number): string[] {
+  const headings: string[] = [];
+  const pattern = level
+    ? new RegExp(`<h${level}\\b[^>]*>[\\s\\S]*?<\\/h${level}>`, "gi")
+    : /<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(stripNonContent(html))) !== null) {
+    const text = cleanVisibleText(match[0]);
+    if (text) headings.push(text);
+  }
+  return headings;
+}
+
+function tokenizeContent(text: string): string[] {
+  const stopwords = new Set([
+    "and", "the", "for", "with", "you", "your", "our", "are", "this", "that", "from", "into", "about", "what", "how",
+    "как", "что", "для", "это", "или", "если", "под", "над", "про", "при", "мы", "вы", "они", "она", "оно", "его", "ее",
+    "нас", "вам", "вас", "уже", "ещё", "еще", "где", "без", "все", "всё", "чем", "чтобы", "когда", "можно", "будет"
+  ]);
+  const matches = text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}-]{2,}/gu) ?? [];
+  return matches.filter((term) => !stopwords.has(term) && !/^\d+$/.test(term));
+}
+
+function scoreAgentSurface(surface: Omit<AgentSurface, "readability">): AgentReadabilityScore {
+  const checks: Array<{ label: string; points: number; passed: boolean; gap: string }> = [
+    {
+      label: "canonical",
+      points: 15,
+      passed: surface.hasCanonical,
+      gap: "Missing canonical URL."
+    },
+    {
+      label: "meta-description",
+      points: 10,
+      passed: surface.hasMetaDescription,
+      gap: "Missing meta description."
+    },
+    {
+      label: "single-h1",
+      points: 10,
+      passed: surface.h1Count === 1,
+      gap: surface.h1Count === 0 ? "Missing H1." : `Expected one H1, found ${surface.h1Count}.`
+    },
+    {
+      label: "semantic-main",
+      points: 10,
+      passed: surface.hasMain,
+      gap: "Missing semantic <main> wrapper."
+    },
+    {
+      label: "json-ld",
+      points: 20,
+      passed: surface.jsonLdCount > 0,
+      gap: "Missing JSON-LD structured data."
+    },
+    {
+      label: "markdown-alternate",
+      points: 20,
+      passed: surface.markdownAlternates.length > 0,
+      gap: "Missing text/markdown alternate link."
+    },
+    {
+      label: "llms-discovery",
+      points: 15,
+      passed: surface.llmsLinks.length > 0,
+      gap: "Missing discoverable llms.txt link in HTML head."
+    }
+  ];
+  const score = checks.filter((check) => check.passed).reduce((sum, check) => sum + check.points, 0);
+  const maxScore = checks.reduce((sum, check) => sum + check.points, 0);
+  const percent = Math.round((score / maxScore) * 100);
+
+  return {
+    score,
+    maxScore,
+    percent,
+    grade: gradeForPercent(percent),
+    passed: checks.filter((check) => check.passed).map((check) => check.label),
+    gaps: checks.filter((check) => !check.passed).map((check) => check.gap)
+  };
+}
+
+function gradeForPercent(percent: number): AgentReadabilityScore["grade"] {
+  if (percent >= 85) return "excellent";
+  if (percent >= 70) return "good";
+  if (percent >= 50) return "partial";
+  return "poor";
 }

@@ -12,6 +12,7 @@ Hosted dashboards:
 - `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.html`
 - `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.production.html`
 - `https://eppelas.github.io/aim-site-agent-evaluation/reports/latest/dashboard.staging.html`
+- `https://eppelas.github.io/aim-site-agent-evaluation/reports/history/index.html`
 
 ## Workflows
 
@@ -28,6 +29,7 @@ What it does:
 
 - installs dependencies with `npm ci`;
 - runs `npm run typecheck`;
+- runs `npm run cms:contract`, which skips cleanly until Sanity env/secrets exist;
 - runs health QA without screenshots;
 - generates `reports/latest/dashboard.html`;
 - uploads `reports/latest/**` as a workflow artifact.
@@ -61,15 +63,47 @@ Schedule:
 
 What it publishes:
 
-- GitHub Actions artifact with `reports/latest/**`, `artifacts/latest/**`, and `artifacts/baselines/**`.
+- GitHub Actions artifact with `reports/latest/**`, `reports/history/**`, `artifacts/history/**`, `artifacts/latest/**`, and `artifacts/baselines/**`.
 - GitHub Pages static site generated from the latest dashboard output.
 - Visual baseline cache for screenshot comparison across runs.
+- Storage manifests for future durable sync: `reports/latest/storage-manifest.json` and `reports/history/storage-manifest.json`.
+- CMS contract preflight output before QA begins; it skips without Sanity env/secrets and produces field-group coverage once configured.
+- Guarded durable sync through `npm run sync:history`; it skips when R2/S3 secrets are absent.
 
 Hosted dashboard paths:
 
 - `/reports/latest/dashboard.html` - index dashboard.
 - `/reports/latest/dashboard.production.html` - production dashboard.
 - `/reports/latest/dashboard.staging.html` - staging dashboard.
+- `/reports/history/index.html` - run history dashboard.
+- `/reports/history/<runId>/dashboard.html` - archived dashboard for a specific run.
+
+### AI Mindset Device Cloud QA
+
+File: `.github/workflows/device-cloud.yml`
+
+Triggers:
+
+- manual `workflow_dispatch`;
+- scheduled monthly preflight on the second day of each month at `09:00 UTC`.
+
+Manual inputs:
+
+- provider: `browserstack`, `lambdatest`, or `saucelabs`;
+- scope: `smoke`, `monthly`, or `launch`.
+
+Current behavior:
+
+- checks whether the selected provider secrets exist;
+- writes a GitHub Step Summary explaining readiness or missing secrets;
+- does not attempt paid cloud sessions yet;
+- if secrets exist, runs TypeScript validation and stops at an explicit adapter-pending step.
+
+Purpose:
+
+- keep the DeviceCloud delivery path visible in GitHub Actions;
+- avoid breaking normal QA when no paid provider account is configured;
+- provide a safe place to add the BrowserStack/TestMu AI/Sauce Labs adapter later.
 
 ## First Setup After Push
 
@@ -100,8 +134,15 @@ Expected paths:
 - `reports/latest/dashboard.html`;
 - `reports/latest/dashboard.production.html`;
 - `reports/latest/dashboard.staging.html`;
-- `artifacts/latest/screenshots/...` for screenshot modes.
-- `artifacts/latest/screenshots/.../diff.png` where a screenshot differs from baseline.
+- `reports/latest/storage-manifest.json`;
+- `reports/history/<runId>/report.json`;
+- `reports/history/<runId>/summary.md`;
+- `reports/history/<runId>/dashboard.html`;
+- `reports/history/index.html`;
+- `reports/history/index.json`;
+- `reports/history/storage-manifest.json`;
+- `artifacts/history/<runId>/screenshots/...` for screenshot modes.
+- `artifacts/history/<runId>/diffs/...` where a screenshot differs from baseline.
 - `artifacts/baselines/screenshots/...` for the current visual comparison base.
 
 Recommended review order:
@@ -118,12 +159,14 @@ V0 requires no GitHub secrets.
 
 Future integrations may require secrets:
 
-- BrowserStack;
+- BrowserStack: `BROWSERSTACK_USERNAME`, `BROWSERSTACK_ACCESS_KEY`;
+- TestMu AI / LambdaTest: `LT_USERNAME`, `LT_ACCESS_KEY`;
+- Sauce Labs: `SAUCE_USERNAME`, `SAUCE_ACCESS_KEY`;
 - Checkly;
 - Percy or Argos;
 - Google Drive;
-- Cloudflare R2/S3;
-- Sanity read token;
+- Cloudflare R2/S3: `QA_HISTORY_S3_ENDPOINT`, `QA_HISTORY_S3_BUCKET`, `QA_HISTORY_S3_ACCESS_KEY_ID`, `QA_HISTORY_S3_SECRET_ACCESS_KEY`, `QA_HISTORY_S3_REGION`;
+- Sanity: `SANITY_PROJECT_ID`, `SANITY_DATASET`, optional `SANITY_API_VERSION`, `SANITY_PERSPECTIVE`, and `SANITY_READ_TOKEN`;
 - AI model API key for LLM scoring.
 
 Do not add secrets until the corresponding integration is implemented.
@@ -132,8 +175,9 @@ Do not add secrets until the corresponding integration is implemented.
 
 - GitHub Actions will only run after the local repo is published to GitHub.
 - No issue creation yet; artifacts are the review surface.
-- GitHub Pages shows the latest run, not a full historical database yet.
-- No external artifact bucket yet; Actions artifacts are retained for 14 or 30 days.
+- GitHub Pages now has generated run history, but no external artifact bucket yet.
+- R2/S3 sync adapter exists, but it cannot upload until bucket credentials are configured.
+- Actions artifacts are retained for 30 days unless workflow retention changes.
 - No real-device BrowserStack run yet.
 
 ## Failure Handling

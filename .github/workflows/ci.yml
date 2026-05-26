@@ -40,12 +40,30 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Run CMS contract preflight
+        env:
+          SANITY_PROJECT_ID: ${{ secrets.SANITY_PROJECT_ID }}
+          SANITY_DATASET: ${{ secrets.SANITY_DATASET }}
+          SANITY_API_VERSION: ${{ secrets.SANITY_API_VERSION }}
+          SANITY_READ_TOKEN: ${{ secrets.SANITY_READ_TOKEN }}
+          SANITY_PERSPECTIVE: ${{ secrets.SANITY_PERSPECTIVE }}
+        run: npm run cms:contract
+
       - name: Run health QA without screenshots
         run: npm run qa -- --site all --max-crawl-pages 80
 
       - name: Generate dashboard
         if: always()
         run: npm run dashboard
+
+      - name: Validate storage manifest
+        if: always()
+        run: |
+          if [[ -f reports/latest/storage-manifest.json ]]; then
+            npm run sync:history -- --dry-run
+          else
+            echo "Storage manifest was not generated."
+          fi
 
       - name: Add summary to job
         if: always()

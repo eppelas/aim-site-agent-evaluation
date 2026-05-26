@@ -99,6 +99,16 @@ jobs:
         if: steps.mode.outputs.skip != 'true'
         run: npm run typecheck
 
+      - name: Run CMS contract preflight
+        if: steps.mode.outputs.skip != 'true'
+        env:
+          SANITY_PROJECT_ID: ${{ secrets.SANITY_PROJECT_ID }}
+          SANITY_DATASET: ${{ secrets.SANITY_DATASET }}
+          SANITY_API_VERSION: ${{ secrets.SANITY_API_VERSION }}
+          SANITY_READ_TOKEN: ${{ secrets.SANITY_READ_TOKEN }}
+          SANITY_PERSPECTIVE: ${{ secrets.SANITY_PERSPECTIVE }}
+        run: npm run cms:contract
+
       - name: Run health-only QA
         if: steps.mode.outputs.skip != 'true' && steps.mode.outputs.mode == 'health'
         run: npm run qa -- --site all --max-crawl-pages 80
@@ -114,6 +124,23 @@ jobs:
       - name: Generate dashboard
         if: steps.mode.outputs.skip != 'true' && always()
         run: npm run dashboard
+
+      - name: Sync durable history storage
+        if: steps.mode.outputs.skip != 'true' && always()
+        env:
+          QA_HISTORY_S3_ENDPOINT: ${{ secrets.QA_HISTORY_S3_ENDPOINT }}
+          QA_HISTORY_S3_BUCKET: ${{ secrets.QA_HISTORY_S3_BUCKET }}
+          QA_HISTORY_S3_ACCESS_KEY_ID: ${{ secrets.QA_HISTORY_S3_ACCESS_KEY_ID }}
+          QA_HISTORY_S3_SECRET_ACCESS_KEY: ${{ secrets.QA_HISTORY_S3_SECRET_ACCESS_KEY }}
+          QA_HISTORY_S3_REGION: ${{ secrets.QA_HISTORY_S3_REGION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f reports/latest/storage-manifest.json ]]; then
+            npm run sync:history
+          else
+            echo "History storage sync skipped: reports/latest/storage-manifest.json was not generated."
+          fi
 
       - name: Prepare GitHub Pages site
         if: steps.mode.outputs.skip != 'true' && always()
@@ -140,9 +167,19 @@ jobs:
           HTML
           fi
 
+          if [[ -d reports/history ]]; then
+            mkdir -p pages/reports/history
+            cp -R reports/history/. pages/reports/history/
+          fi
+
           if [[ -d artifacts/latest ]]; then
             mkdir -p pages/artifacts/latest
             cp -R artifacts/latest/. pages/artifacts/latest/
+          fi
+
+          if [[ -d artifacts/history ]]; then
+            mkdir -p pages/artifacts/history
+            cp -R artifacts/history/. pages/artifacts/history/
           fi
 
           if [[ -d artifacts/baselines ]]; then
@@ -182,7 +219,9 @@ jobs:
           name: aim-site-qa-${{ steps.mode.outputs.mode }}-${{ github.run_id }}
           path: |
             reports/latest/**
+            reports/history/**
             artifacts/latest/**
+            artifacts/history/**
             artifacts/baselines/**
           if-no-files-found: warn
           retention-days: 30

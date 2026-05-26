@@ -32,17 +32,25 @@ Useful for simpler uptime, status page, and incidents.
 
 Practical visual diff review layer with BrowserStack ecosystem fit.
 
+2026-05-23 check: Percy has a free entry tier with 5,000 screenshots/month and is strongest when BrowserStack is already the device-cloud provider. Use it if we want one vendor relationship for BrowserStack + Percy.
+
 ### Argos
 
 Lean visual testing with GitHub-friendly workflow.
+
+2026-05-23 check: Argos is the best first hosted visual-review vendor for this repo if we want a small-team GitHub workflow and transparent pricing. Hobby includes up to 5,000 screenshots; Pro starts at `$100/month` with 35,000 screenshots and usage-based overage.
 
 ### Applitools
 
 Strongest visual AI option for lower false positives and enterprise-grade cross-browser visual testing. Higher cost.
 
+2026-05-23 check: Applitools is still the strongest enterprise visual-AI option, especially for dynamic content and cross-browser visual analysis, but pricing is sales-led. Do not start here unless local pixelmatch/Percy/Argos produces too many false positives.
+
 ### Chromatic
 
 Best when a Storybook/component system exists.
+
+Current recommendation: keep our local Playwright + pixelmatch screenshots as the baseline, then add Argos first if the team wants hosted approvals. Pick Percy instead if BrowserStack is selected and bundling matters. Pick Applitools only after false-positive pain is proven.
 
 ## Real Device Cloud
 
@@ -101,13 +109,25 @@ Enterprise continuous monitoring and change detection.
 
 Tracks brand visibility and citations across AI search surfaces.
 
+2026-05-23 check: Otterly is the most accessible first AI-visibility trial because public pricing starts at `$29/month` for Lite and includes ChatGPT, Google AI Overviews, Perplexity, and Microsoft Copilot tracking.
+
 ### AthenaHQ
 
 AI search visibility, competitive intelligence, hallucination detection.
 
+AthenaHQ is positioned for cross-platform monitoring, competitive intelligence, hallucination detection, and prescriptive content work, but public pricing was not visible in the quick official-source pass.
+
 ### Scrunch
 
 Positioned around agent experience and AI search readiness.
+
+Scrunch publishes strong AI visibility/agent-experience positioning and FAQs around share of voice, citations, sentiment, AI referrals, and bot traffic, but public pricing was not visible in the quick official-source pass.
+
+### Lumar
+
+Enterprise website optimization, SEO, and AEO/GEO monitoring. Pricing is quote-based.
+
+Current recommendation: do not buy an AI-visibility vendor yet. First fix the surfaces this repo already flags: canonical URLs, JSON-LD, Markdown mirrors, `llms.txt`, date freshness, and direct CTA links. If we want a cheap monitoring trial after that, start with Otterly Lite/Standard. Consider AthenaHQ/Scrunch/Lumar only when AI visibility becomes a growth KPI, not a QA prerequisite.
 
 ## LLM Evaluation
 
@@ -131,3 +151,19 @@ Use this for agent-readability scoring, not as the only release gate.
 7. Sitebulb Cloud or Screaming Frog crawl audits.
 8. Otterly/AthenaHQ AI visibility trial.
 9. Custom dashboard backed by artifact metadata.
+
+## Source Notes 2026-05-23
+
+- Percy pricing: https://percy.io/pricing
+- BrowserStack Percy plans: https://www.browserstack.com/docs/percy/overview/plans-and-billing
+- Argos pricing: https://argos-ci.com/pricing
+- Applitools Eyes: https://applitools.com/platform/eyes/
+- BrowserStack mobile browser support: https://www.browserstack.com/support/faq/mobile/devices-amp-browsers/can-i-test-different-browsers-on-mobile-devices
+- Sauce Labs supported browsers/devices: https://saucelabs.com/products/supported-browsers-devices
+- Sauce Labs Playwright docs: https://docs.saucelabs.com/web-apps/automated-testing/playwright/
+- Telegram Mini Apps docs: https://core.telegram.org/bots/webapps
+- Arc release notes: https://resources.arc.net/hc/en-us/articles/20498293324823-Arc-for-macOS-2024-2026-Release-Notes
+- Otterly pricing: https://otterly.ai/pricing
+- AthenaHQ: https://www.athenahq.ai/
+- Scrunch FAQ: https://scrunch.com/faqs/
+- Lumar pricing: https://www.lumar.io/pricing/

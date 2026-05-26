@@ -101,6 +101,70 @@ For each key page, ask:
 
 The evaluator should require source snippets and canonical URLs.
 
+## Per-Page Score V1
+
+The runner now assigns each checked HTML page an agent-readability score from `0` to `100`.
+
+Scoring:
+
+| Surface | Points |
+| --- | ---: |
+| Canonical URL | 15 |
+| Meta description | 10 |
+| Exactly one H1 | 10 |
+| Semantic `<main>` | 10 |
+| JSON-LD | 20 |
+| Markdown alternate | 20 |
+| Discoverable `llms.txt` link in HTML head | 15 |
+
+Grades:
+
+| Grade | Percent |
+| --- | --- |
+| `excellent` | `85-100` |
+| `good` | `70-84` |
+| `partial` | `50-69` |
+| `poor` | below `50` |
+
+The dashboard shows a per-page table sorted from worst to best with:
+
+- score;
+- grade;
+- URL;
+- passed surfaces;
+- gaps;
+- Markdown/llms/JSON-LD evidence when present.
+
+If a site has pages below `50/100`, the run creates an `agent-readability` finding with the lowest-scoring pages in evidence.
+
+## HTML vs Markdown Consistency V1
+
+When a page exposes one or more `text/markdown` alternates, the runner now fetches up to three Markdown mirrors and compares them with the HTML page.
+
+The check compares:
+
+- H1 text;
+- extracted headings;
+- top visible content terms;
+- HTML word count vs Markdown word count;
+- shared and missing terms.
+
+Statuses:
+
+- `matched`: similarity is `70/100` or higher;
+- `partial`: similarity is `45-69/100`;
+- `mismatch`: similarity is below `45/100`;
+- `failed`: the Markdown mirror is not reachable or has no readable body.
+
+`partial`, `mismatch`, and `failed` mirrors create `agent-readability` findings. This is intentionally dormant on pages without Markdown alternates; missing alternates are already covered by the score and aggregate findings.
+
+Current V1 signal from the latest local run:
+
+- production: all checked HTML pages scored below `50/100`;
+- staging: all checked HTML pages scored below `50/100`;
+- shared gaps are missing canonical links, JSON-LD, Markdown alternates, and `llms.txt` discovery;
+- staging also misses semantic `<main>` on checked pages.
+
 ## Prompt-Injection Scan
 
 Flag:

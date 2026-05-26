@@ -1,0 +1,108 @@
+{
+  "contractVersion": 1,
+  "provider": "sanity",
+  "siteFramework": "astro",
+  "purpose": "Describe the CMS fields the QA runner needs before Sanity-aware freshness and agent-readable mirrors can become active checks.",
+  "requiredEnvironment": [
+    "SANITY_PROJECT_ID",
+    "SANITY_DATASET"
+  ],
+  "optionalEnvironment": [
+    "SANITY_API_VERSION",
+    "SANITY_READ_TOKEN",
+    "SANITY_PERSPECTIVE"
+  ],
+  "defaultApiVersion": "2026-03-01",
+  "defaultPerspective": "published",
+  "documentTypes": [
+    "lab",
+    "labs",
+    "cohort",
+    "program",
+    "event",
+    "page",
+    "landingPage"
+  ],
+  "requiredFieldGroups": [
+    {
+      "name": "identity",
+      "description": "Stable identity for mapping CMS records to visible site routes and dashboard findings.",
+      "requiredAny": [
+        "_id"
+      ]
+    },
+    {
+      "name": "route",
+      "description": "Canonical slug or explicit route used to compare CMS state with crawled pages.",
+      "requiredAny": [
+        "slug.current",
+        "path",
+        "route",
+        "url"
+      ]
+    },
+    {
+      "name": "title",
+      "description": "Human-readable title used in reports, Markdown mirrors, and JSON-LD.",
+      "requiredAny": [
+        "title",
+        "name",
+        "seo.title"
+      ]
+    },
+    {
+      "name": "freshnessDates",
+      "description": "Dates needed to decide whether lab/event/application copy is current.",
+      "requiredAny": [
+        "startDate",
+        "endDate",
+        "applicationOpenAt",
+        "applicationCloseAt",
+        "registrationOpenAt",
+        "registrationCloseAt"
+      ]
+    },
+    {
+      "name": "publicState",
+      "description": "Editorial state that should agree with visible CTA copy.",
+      "requiredAny": [
+        "status",
+        "state",
+        "isArchived",
+        "isWaitlistOpen"
+      ]
+    },
+    {
+      "name": "cta",
+      "description": "CTA label and target used to catch stale forms, past events, and wrong workflow destinations.",
+      "requiredAny": [
+        "cta",
+        "primaryCta",
+        "actions",
+        "links"
+      ]
+    },
+    {
+      "name": "agentReadableBody",
+      "description": "Canonical text source for Markdown mirrors and llms.txt entries.",
+      "requiredAny": [
+        "markdown",
+        "bodyMarkdown",
+        "agentSummary",
+        "body",
+        "content"
+      ]
+    }
+  ],
+  "recommendedAstroOutputs": [
+    "/sitemap.xml",
+    "/llms.txt",
+    "/llms-full.txt",
+    "/<route>.md"
+  ],
+  "notes": [
+    "Use the published Sanity perspective for production parity.",
+    "Use the drafts perspective only for staging/editorial preview checks, with useCdn=false and a read token.",
+    "Generate HTML, Markdown mirrors, JSON-LD, sitemap, and llms.txt from the same canonical CMS record instead of maintaining separate copies."
+  ]
+}

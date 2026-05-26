@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { BrowserMatrixConfig, MigrationMapping, RoutesConfig, SiteConfig, SiteId, ViewportConfig } from "./types.js";
+import type { BrowserMatrixConfig, CtaRulesConfig, MigrationMapping, RoutesConfig, SiteConfig, SiteId, ViewportConfig } from "./types.js";
 
 const repoRoot = process.cwd();
 
@@ -26,6 +26,10 @@ export async function loadBrowserMatrix(): Promise<BrowserMatrixConfig> {
 export async function loadMigrationMap(): Promise<MigrationMapping[]> {
   const config = await readJson<{ mappings: MigrationMapping[] }>("config/migration-map.json");
   return config.mappings;
+}
+
+export async function loadCtaRules(): Promise<CtaRulesConfig> {
+  return readJson<CtaRulesConfig>("config/cta-rules.json");
 }
 
 export function selectViewports(matrix: BrowserMatrixConfig, names: string[]): ViewportConfig[] {

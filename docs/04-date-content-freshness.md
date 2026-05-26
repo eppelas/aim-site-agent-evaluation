@@ -67,6 +67,37 @@ Example regression captured from production:
 - Run date: `2026-05-21`
 - Expected result: failed freshness finding, because a live homepage CTA points to a past event.
 
+## Visible Page Date Freshness V1
+
+The checker also parses visible page text and normalizes likely dates into `dateSignals`.
+
+Supported in V1:
+
+- Russian day-month dates such as `15 июля 2025` and `13 мая`;
+- English dates such as `May 13`, `13 May`, and versions with year;
+- numeric dates such as `13.05.2026`;
+- ISO dates such as `2026-05-13`.
+
+For each date signal the report stores:
+
+- raw date text;
+- normalized ISO date when parseable;
+- whether the year was assumed;
+- `past`, `today`, `upcoming`, or `unknown`;
+- inferred category: `start`, `deadline`, `application`, `event`, `cohort`, `archive`, or `generic`;
+- context snippet from the page.
+
+Actionable V1 rule:
+
+- past `start`, `deadline`, `application`, or `event` dates on live HTML pages create a `date-freshness` finding;
+- `archive`, legal, privacy, terms, offer, and generic historical contexts are not treated as blocking freshness failures;
+- missing year is kept in evidence because it can create ambiguity.
+
+Confirmed current examples:
+
+- `https://staging.aimindset.org/garden/` contains past start dates: `15 июля 2025` and `12 августа 2025`.
+- The production homepage links to `https://luma.com/pitch_lab`; the link is HTTP 200, but the destination event dates are already past, so the report marks it stale with the source page attached.
+
 ## Warning Rules
 
 Flag as warning:

@@ -1,0 +1,147 @@
+name: AI Mindset Device Cloud QA
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Device cloud provider"
+        type: choice
+        required: true
+        default: "browserstack"
+        options:
+          - browserstack
+          - lambdatest
+          - saucelabs
+      scope:
+        description: "Run scope"
+        type: choice
+        required: true
+        default: "smoke"
+        options:
+          - smoke
+          - monthly
+          - launch
+  schedule:
+    # Monthly device-cloud preflight on the second day of each month.
+    # The real provider job remains skipped until secrets and an adapter exist.
+    - cron: "0 9 2 * *"
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      provider: ${{ steps.preflight.outputs.provider }}
+      scope: ${{ steps.preflight.outputs.scope }}
+      ready: ${{ steps.preflight.outputs.ready }}
+      reason: ${{ steps.preflight.outputs.reason }}
+    env:
+      SELECTED_PROVIDER: ${{ github.event.inputs.provider || 'browserstack' }}
+      SELECTED_SCOPE: ${{ github.event.inputs.scope || 'monthly' }}
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+      LT_USERNAME: ${{ secrets.LT_USERNAME }}
+      LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+      SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
+      SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
+    steps:
+      - name: Check provider secrets
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          provider="${SELECTED_PROVIDER:-browserstack}"
+          scope="${SELECTED_SCOPE:-monthly}"
+          ready="false"
+          reason=""
+
+          case "$provider" in
+            browserstack)
+              if [[ -n "${BROWSERSTACK_USERNAME:-}" && -n "${BROWSERSTACK_ACCESS_KEY:-}" ]]; then
+                ready="true"
+                reason="BrowserStack credentials are present."
+              else
+                reason="Missing BROWSERSTACK_USERNAME and/or BROWSERSTACK_ACCESS_KEY."
+              fi
+              ;;
+            lambdatest)
+              if [[ -n "${LT_USERNAME:-}" && -n "${LT_ACCESS_KEY:-}" ]]; then
+                ready="true"
+                reason="LambdaTest/TestMu AI credentials are present."
+              else
+                reason="Missing LT_USERNAME and/or LT_ACCESS_KEY."
+              fi
+              ;;
+            saucelabs)
+              if [[ -n "${SAUCE_USERNAME:-}" && -n "${SAUCE_ACCESS_KEY:-}" ]]; then
+                ready="true"
+                reason="Sauce Labs credentials are present."
+              else
+                reason="Missing SAUCE_USERNAME and/or SAUCE_ACCESS_KEY."
+              fi
+              ;;
+            *)
+              reason="Unsupported provider: $provider."
+              ;;
+          esac
+
+          {
+            echo "provider=$provider"
+            echo "scope=$scope"
+            echo "ready=$ready"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Device Cloud QA Preflight"
+            echo ""
+            echo "- Provider: \`$provider\`"
+            echo "- Scope: \`$scope\`"
+            echo "- Ready: \`$ready\`"
+            echo "- Reason: $reason"
+            echo ""
+            if [[ "$ready" != "true" ]]; then
+              echo "No cloud run was attempted. Add the provider secrets listed in \`config/device-cloud-matrix.json\` when this lane is ready."
+            else
+              echo "Credentials are present. The adapter job can be enabled after the provider-specific Playwright connection is implemented."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  device-cloud-placeholder:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate local code before cloud adapter run
+        run: npm run typecheck
+
+      - name: Adapter not enabled yet
+        shell: bash
+        run: |
+          {
+            echo "## Device Cloud Adapter Pending"
+            echo ""
+            echo "Provider credentials are configured for \`${{ needs.preflight.outputs.provider }}\`, but this repository does not yet run a paid provider session."
+            echo ""
+            echo "Next implementation step: add the provider adapter that stores session URLs, videos, logs, screenshots, and device metadata in \`report.json\`."
+          } >> "$GITHUB_STEP_SUMMARY"
