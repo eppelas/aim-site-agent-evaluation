@@ -8,6 +8,23 @@
   "seedPaths": [
     "/"
   ],
+  "visualStates": [
+    { "name": "hero", "selector": "#hero", "description": "First viewport and main hero state." },
+    { "name": "agent-company", "selector": "#agent-company", "description": "Why now / agent company section." },
+    { "name": "speakers", "selector": "#speakers", "description": "Speakers section." },
+    { "name": "route", "selector": "#route", "description": "Transformation route section; known 13-inch sticky navigation risk." },
+    { "name": "outcomes", "selector": "#outcomes", "description": "Outcome tracks section." },
+    { "name": "alumni", "selector": "#alumni", "description": "Companies/alumni logo strip section." },
+    { "name": "case-library", "selector": "#case-library", "description": "Case library section." },
+    { "name": "adaptive-lab", "selector": "#adaptive-lab", "description": "Adaptive lab section." },
+    { "name": "support-depth", "selector": "#support-depth", "description": "What is inside / support depth section." },
+    { "name": "pricing", "selector": "#pricing", "description": "Pricing section." },
+    { "name": "testimonials", "selector": "#testimonials", "description": "Testimonials section." },
+    { "name": "schedule", "selector": "#schedule", "description": "Schedule section." },
+    { "name": "faq", "selector": "#faq", "description": "FAQ section." },
+    { "name": "final-cta", "selector": "#final-cta", "description": "Final CTA section." },
+    { "name": "footer", "selector": "#footer", "description": "Footer and page bottom state." }
+  ],
   "knownFindings": [
     {
       "path": "/",

@@ -28,11 +28,18 @@ This file is the working task list for the black-box QA/evaluation repo.
 
 ## Site Fixes Found By Current Runs
 
+Current evidence anchor: staging run `2026-05-27T03-04-04-061Z-staging` checked 20 pages and found 14 issues, including a re-confirmed high-severity 404 on `/sprint-pos`.
+AI Native evidence anchor: run `2026-06-12T21-30-52-045Z-ai-native` checked 5 pages and captured 316 short viewport/focused evidence screenshots across Chromium/Firefox/WebKit, mobile/tablet/13-inch/desktop/wide, and 15 section states. It found 100 findings; 93 are the same sticky side-nav collision/crowding class repeated by browser/viewport/section.
+
 | Priority | Status | Site | Issue | Action |
 | --- | --- | --- | --- | --- |
-| P0 | open | staging | `/automation-lab` returns 404 but is linked from multiple pages. | Fix CMS links or create route/redirect. |
-| P0 | open | staging | `/labs/w26` returns 404 but is linked from multiple pages. | Point links to live route, likely `/labs/w26-main-lab/`, or create redirect. |
-| P0 | open | staging | `/sprint-pos` returns 404 from `/non-profit/`. | Fix link or create route/redirect. |
+| P0 | open | ai-native | Sticky side navigation collides with or crowds content on desktop-class breakpoints across Chromium, Firefox, and WebKit. | Review the viewport evidence in run `2026-06-12T21-30-52-045Z-ai-native`, especially `laptop-13`, `small-laptop`, and `macbook` states for `agent-company`, `route`, `outcomes`, `adaptive-lab`, `support-depth`, `pricing`, `testimonials`, `faq`, and `footer`; hide/reposition the side nav or add a breakpoint before content collision. |
+| P1 | superseded | ai-native | iPhone/mobile-large full-page screenshots from the older smoke run contained persistent 1188-1198px blank bands near the bottom. | Superseded by viewport-state evidence workflow; do not use full-page tall screenshots as human evidence. If bottom-page blankness remains suspected, inspect the `footer` viewport-state screenshots instead. |
+| P1 | open | ai-native | 13-inch route/stage section still needs manual product/design review around stage 05 / `обновить бэклог роста`. | Use the focused `laptop-13-route-focus` screenshot plus the `route` viewport-state evidence across Chromium/Firefox/WebKit to decide the exact breakpoint/repositioning fix. |
+| P1 | open | ai-native | Checked pages are missing Markdown alternates, discoverable `llms.txt` link, JSON-LD, and canonical metadata. | Add agent-readable and SEO metadata surfaces before using this sprint page as a durable public reference. |
+| P0 | open | staging | `/automation-lab` returns 404 but is linked from multiple pages. | Local V3 repo now includes a static redirect page to `/`; deploy staging and rerun QA to confirm hosted 404 is gone. |
+| P0 | open | staging | `/labs/w26` returns 404 but is linked from multiple pages. | Local V3 repo now includes a static redirect page to `/labs/w26-main-lab/`; deploy staging and rerun QA to confirm hosted 404 is gone. |
+| P0 | open | staging | `/sprint-pos` returns 404 from `/non-profit/`. | Local V3 repo now includes a static redirect page to `/ai-mindset`; deploy staging and rerun QA to confirm hosted 404 is gone. |
 | P0 | open | staging | `/sitemap.xml` returns 404. | Generate sitemap before staging becomes production. |
 | P1 | open | staging | `/llms.txt` and `/llms-full.txt` return 404. | Add agent-readable index files or adjust required-surface policy. |
 | P1 | open | staging | Missing Markdown alternates, JSON-LD, canonicals, and `<main>` on checked HTML pages. | Fix shared Astro layout and metadata generation. |
@@ -79,3 +86,4 @@ This file is the working task list for the black-box QA/evaluation repo.
 | done | DeviceCloud decision brief | Added current provider comparison and recommendation in `docs/13-device-cloud-integration.md`. |
 | done | Finding remediation hints | Findings include recommended owner and next steps. |
 | done | Sanity/Astro content contract preflight | Added `config/cms-surface-contract.json`, `npm run cms:contract`, workflow preflight steps, and `docs/15-sanity-astro-content-contract.md`. |
+| done | Dashboard light Site Hub UI refresh | Generated dashboards now use a light gray-blue operational theme with suspicious-first screenshot gallery, finding-card micro problem previews, generated blank/overlap crop PNGs, explicit exact-screenshot/gallery-card links, mobile stacked tables, and desktop/mobile overflow checks. |

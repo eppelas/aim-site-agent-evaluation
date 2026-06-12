@@ -1,5 +1,5 @@
 import path from "node:path";
-import { loadBrowserMatrix, loadCtaRules, loadMigrationMap, loadRoutesConfig, loadSites, selectViewports } from "../config.js";
+import { loadBrowserMatrix, loadCtaRules, loadMigrationMap, loadRoutesConfig, loadSites, selectBrowserEngines, selectViewports } from "../config.js";
 import { discoverRoutes } from "../discovery.js";
 import { checkPage, checkSurfaceFiles, findingsFromPageChecks } from "../checks.js";
 import { captureFocusedScreenshot, captureScreenshots } from "../screenshots.js";
@@ -9,13 +9,16 @@ import { checkExternalTargets, externalTargetFindings } from "../external-target
 import { dateFreshnessFindings } from "../date-freshness.js";
 import { buildMigrationRecords, migrationFindings } from "../migration.js";
 import { buildSummary, writeReports } from "../report.js";
-import type { DiscoveredRoute, RunMode, RunReport, SiteConfig, SiteId } from "../types.js";
+import type { BrowserEngine, DiscoveredRoute, RunMode, RunReport, SiteConfig, SiteId } from "../types.js";
 
 interface CliOptions {
   site: "all" | SiteId;
   screenshots: boolean;
   screenshotLimit: number;
   screenshotViewportNames: string[];
+  screenshotEngineNames: string[];
+  stateScreenshots: boolean;
+  fullPageScreenshots: boolean;
   maxCrawlPages: number;
 }
 
@@ -50,9 +53,14 @@ async function main(): Promise<void> {
     if (options.screenshots) {
       const matrix = await loadBrowserMatrix();
       const viewports = selectViewports(matrix, options.screenshotViewportNames);
+      const browserEngines = selectBrowserEngines(matrix, options.screenshotEngineNames);
       const artifactRunDir = path.join("artifacts", "history", runId);
       const screenshotArtifacts = await captureScreenshots(site, routes, {
         viewports,
+        browserEngines,
+        visualStates: routesConfig.visualStates,
+        stateScreenshots: options.stateScreenshots,
+        fullPageScreenshots: options.fullPageScreenshots,
         limit: options.screenshotLimit,
         outputDir: path.join(artifactRunDir, "screenshots"),
         baselineDir: path.join("artifacts", "baselines", "screenshots"),
@@ -252,6 +260,46 @@ async function main(): Promise<void> {
     });
   }
 
+  for (const screenshot of allScreenshots.filter((artifact) => artifact.status === "captured" && (artifact.stickyOverlaps?.length ?? 0) > 0)) {
+    const overlaps = screenshot.stickyOverlaps ?? [];
+    const overlapCount = overlaps.filter((overlap) => overlap.kind === "overlap").length;
+    const nearCount = overlaps.length - overlapCount;
+    const topOverlap = overlaps[0];
+    findings.push({
+      id: `finding_${String(findings.length + 1).padStart(3, "0")}`,
+      siteId: screenshot.siteId,
+      url: screenshot.url,
+      checkType: "screenshot",
+      severity: overlapCount > 0 ? "high" : "medium",
+      status: "needs-review",
+      title: "Sticky or fixed element may collide with visible content",
+      description: `Viewport-state screenshot detected ${overlapCount} overlap and ${nearCount} near-overlap candidate(s) at ${screenshot.viewport.name}${screenshot.browserEngine ? ` / ${screenshot.browserEngine}` : ""}${screenshot.state ? ` / ${screenshot.state.name}` : ""}.`,
+      expected: "Sticky/fixed navigation and helper UI should not cover or crowd readable page content at any scroll state.",
+      actual: topOverlap
+        ? `${topOverlap.kind}: ${topOverlap.fixedSelector} (${topOverlap.fixedPosition}) vs ${topOverlap.contentSelector}; fixed text "${truncate(topOverlap.fixedText ?? "")}", content "${truncate(topOverlap.contentText ?? "")}".`
+        : "Sticky/fixed overlap candidate detected.",
+      remediation: {
+        owner: "design",
+        summary: "Review the focused viewport-state evidence and adjust sticky/fixed breakpoints, z-index, width, or hide rules if the collision is real.",
+        steps: [
+          "Open the current evidence screenshot from this finding.",
+          "Compare the fixed/sticky element rectangle with the reported content rectangle in report.json.",
+          "If the issue is real, move or hide the sticky element at this viewport and rerun AI Native visual QA."
+        ]
+      },
+      evidence: {
+        browserEngine: screenshot.browserEngine,
+        viewport: screenshot.viewport,
+        state: screenshot.state,
+        filePath: screenshot.filePath,
+        overlaps: overlaps.slice(0, 12),
+        overlapCount,
+        nearCount,
+        sha256: screenshot.sha256
+      }
+    });
+  }
+
   const finishedAt = new Date();
   const summary = buildSummary(findings);
   summary.routesDiscovered = allRoutes.length;
@@ -292,6 +340,9 @@ function parseArgs(args: string[]): CliOptions {
     screenshots: false,
     screenshotLimit: 0,
     screenshotViewportNames: ["mobile", "desktop"],
+    screenshotEngineNames: ["chromium"],
+    stateScreenshots: false,
+    fullPageScreenshots: true,
     maxCrawlPages: 80
   };
 
@@ -313,6 +364,13 @@ function parseArgs(args: string[]): CliOptions {
     } else if (arg === "--screenshot-viewports" && next) {
       options.screenshotViewportNames = next.split(",").map((item) => item.trim()).filter(Boolean);
       index += 1;
+    } else if (arg === "--screenshot-engines" && next) {
+      options.screenshotEngineNames = next.split(",").map((item) => item.trim()).filter(Boolean);
+      index += 1;
+    } else if (arg === "--state-screenshots") {
+      options.stateScreenshots = true;
+    } else if (arg === "--no-full-page-screenshots") {
+      options.fullPageScreenshots = false;
     } else if (arg === "--max-crawl-pages" && next) {
       options.maxCrawlPages = Number.parseInt(next, 10);
       index += 1;
@@ -322,6 +380,10 @@ function parseArgs(args: string[]): CliOptions {
   }
 
   return options;
+}
+
+function truncate(value: string): string {
+  return value.length > 90 ? `${value.slice(0, 87)}...` : value;
 }
 
 function modeForSites(sites: SiteConfig[], selected: "all" | SiteId): RunMode {

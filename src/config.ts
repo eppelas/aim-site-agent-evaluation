@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { BrowserMatrixConfig, CtaRulesConfig, MigrationMapping, RoutesConfig, SiteConfig, SiteId, ViewportConfig } from "./types.js";
+import type { BrowserEngine, BrowserMatrixConfig, CtaRulesConfig, MigrationMapping, RoutesConfig, SiteConfig, SiteId, ViewportConfig } from "./types.js";
 
 const repoRoot = process.cwd();
 
@@ -53,6 +53,29 @@ export function selectViewports(matrix: BrowserMatrixConfig, names: string[]): V
     }
     return viewport;
   });
+}
+
+export function selectBrowserEngines(matrix: BrowserMatrixConfig, names: string[]): BrowserEngine[] {
+  const aliases: Record<string, BrowserEngine> = {
+    chrome: "chromium",
+    chromium: "chromium",
+    edge: "chromium",
+    firefox: "firefox",
+    gecko: "firefox",
+    safari: "webkit",
+    webkit: "webkit"
+  };
+  const configured = matrix.engines.map((engine) => aliases[engine]).filter((engine): engine is BrowserEngine => Boolean(engine));
+  const requested = names.length > 0 ? names : configured;
+  const engines = requested.map((name) => {
+    const engine = aliases[name];
+    if (!engine) {
+      throw new Error(`Unknown browser engine "${name}". Known engines: chromium, firefox/gecko, webkit.`);
+    }
+    return engine;
+  });
+
+  return [...new Set(engines)];
 }
 
 export function getRepoRoot(): string {

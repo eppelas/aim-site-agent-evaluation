@@ -1,5 +1,5 @@
 {
-  "engines": ["chromium", "webkit", "gecko"],
+  "engines": ["chromium", "firefox", "webkit"],
   "viewports": {
     "core": [
       { "name": "android-narrow", "width": 360, "height": 800 },

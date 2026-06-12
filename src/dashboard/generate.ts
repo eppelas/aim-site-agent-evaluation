@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { PNG } from "pngjs";
 import type { Finding, LinkReference, RunReport, ScreenshotArtifact, SiteConfig, SiteId } from "../types.js";
 
 const latestReportPath = path.join(process.cwd(), "reports", "latest", "report.json");
@@ -9,27 +10,203 @@ const historyRootDir = path.join(process.cwd(), "reports", "history");
 const sitesConfigPath = path.join(process.cwd(), "config", "sites.json");
 const historyStorageConfigPath = path.join(process.cwd(), "config", "history-storage.json");
 let renderOutputDir = latestOutputDir;
+let evidenceCropIndex = new Map<string, string>();
+let evidenceFocusIndex = new Map<string, EvidenceFocus>();
+
+interface CropBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface EvidenceFocus {
+  kind: "blank" | "overlap" | "manual";
+  label: string;
+  detail?: string;
+  xPercent: number;
+  yPercent: number;
+  crop?: CropBounds;
+}
 
 async function main(): Promise<void> {
   const report = JSON.parse(await readFile(latestReportPath, "utf8")) as RunReport;
   await writeDashboardSet(report, latestOutputDir);
 
-  const historyOutputDir = path.join(historyRootDir, safePathSegment(report.runId));
-  await writeDashboardSet(report, historyOutputDir);
+  await writeHistoryDashboardSets();
   const historyReports = await writeHistoryIndex();
   await writeStorageManifests(report, historyReports);
 
   console.log(`Dashboard written: ${path.relative(process.cwd(), path.join(latestOutputDir, "dashboard.html"))}`);
 }
 
+async function writeHistoryDashboardSets(): Promise<void> {
+  const historyReports = await loadHistoryReports();
+  for (const report of historyReports) {
+    await writeDashboardSet(report, path.join(historyRootDir, safePathSegment(report.runId)));
+  }
+}
+
 async function writeDashboardSet(report: RunReport, targetOutputDir: string): Promise<void> {
   renderOutputDir = targetOutputDir;
   await mkdir(targetOutputDir, { recursive: true });
+  evidenceCropIndex = await writeEvidenceCrops(report, targetOutputDir);
   const dashboardSiteIds = await siteIdsForDashboardSet(report, targetOutputDir);
   await writeFile(path.join(targetOutputDir, "dashboard.html"), renderDashboardIndex(report, dashboardSiteIds), "utf8");
   for (const siteId of dashboardSiteIds) {
     await writeFile(path.join(targetOutputDir, `dashboard.${siteId}.html`), renderDashboard(report, siteId), "utf8");
   }
+}
+
+async function writeEvidenceCrops(report: RunReport, targetOutputDir: string): Promise<Map<string, string>> {
+  const cropIndex = new Map<string, string>();
+  const focusIndex = new Map<string, EvidenceFocus>();
+  const cropDir = path.join(targetOutputDir, "evidence-crops");
+  const screenshotByFilePath = new Map(report.screenshots.map((screenshot) => [screenshot.filePath, screenshot]));
+
+  for (const finding of report.findings) {
+    const filePath = stringEvidence(finding, "filePath");
+    const screenshot = filePath ? screenshotByFilePath.get(filePath) : undefined;
+    const focus = findingEvidenceFocus(finding, screenshot);
+    if (focus) focusIndex.set(finding.id, focus);
+    if (!filePath || !focus?.crop) continue;
+
+    try {
+      const sourcePath = path.join(process.cwd(), filePath);
+      const cropId = createHash("sha256")
+        .update(`${finding.id}:${filePath}:${JSON.stringify(focus.crop)}`)
+        .digest("hex")
+        .slice(0, 12);
+      const cropPath = path.join(cropDir, `${safePathSegment(finding.id)}-${cropId}.png`);
+      await mkdir(cropDir, { recursive: true });
+      await writePngCrop(sourcePath, cropPath, focus.crop);
+      cropIndex.set(finding.id, toPosix(path.relative(process.cwd(), cropPath)));
+    } catch {
+      // Evidence crops are a dashboard affordance; the original screenshot link remains canonical.
+    }
+  }
+
+  evidenceFocusIndex = focusIndex;
+  return cropIndex;
+}
+
+async function writePngCrop(sourcePath: string, cropPath: string, crop: CropBounds): Promise<void> {
+  const source = PNG.sync.read(await readFile(sourcePath));
+  const x = clampInteger(crop.x, 0, Math.max(0, source.width - 1));
+  const y = clampInteger(crop.y, 0, Math.max(0, source.height - 1));
+  const width = clampInteger(crop.width, 1, source.width - x);
+  const height = clampInteger(crop.height, 1, source.height - y);
+  const output = new PNG({ width, height });
+
+  for (let row = 0; row < height; row += 1) {
+    for (let col = 0; col < width; col += 1) {
+      const sourceIndex = ((source.width * (y + row)) + (x + col)) << 2;
+      const outputIndex = ((width * row) + col) << 2;
+      output.data[outputIndex] = source.data[sourceIndex];
+      output.data[outputIndex + 1] = source.data[sourceIndex + 1];
+      output.data[outputIndex + 2] = source.data[sourceIndex + 2];
+      output.data[outputIndex + 3] = source.data[sourceIndex + 3];
+    }
+  }
+
+  await writeFile(cropPath, PNG.sync.write(output));
+}
+
+function findingEvidenceFocus(finding: Finding, screenshot?: ScreenshotArtifact): EvidenceFocus | undefined {
+  const evidence = finding.evidence ?? {};
+  const image = asRecord(evidence.image) ?? asRecord(screenshot?.image);
+  const width = numberValue(image?.width);
+  const height = numberValue(image?.height);
+  const blankRegion = asRecord(image?.largestBlankRegion);
+  if (width && height && blankRegion) {
+    const startY = numberValue(blankRegion.startY) ?? 0;
+    const endY = numberValue(blankRegion.endY) ?? startY;
+    const regionHeight = numberValue(blankRegion.height) ?? Math.max(1, endY - startY + 1);
+    const centerY = startY + regionHeight / 2;
+    const padding = Math.round(Math.min(260, Math.max(90, regionHeight * 0.18)));
+    const cropY = clampInteger(startY - padding, 0, Math.max(0, height - 1));
+    const cropHeight = clampInteger(regionHeight + padding * 2, 160, height - cropY);
+    return {
+      kind: "blank",
+      label: "Problem crop: blank region",
+      detail: `blank band y=${Math.round(startY)}-${Math.round(endY)} / ${Math.round(regionHeight)}px`,
+      xPercent: 50,
+      yPercent: percent(centerY, height),
+      crop: { x: 0, y: cropY, width, height: cropHeight }
+    };
+  }
+
+  const overlap = firstOverlap(evidence);
+  if (width && height && overlap) {
+    const intersection = asRecord(overlap.intersection);
+    const fixedRect = asRecord(overlap.fixedRect);
+    const referenceRect = intersection ?? fixedRect;
+    const left = numberValue(referenceRect?.left ?? referenceRect?.x) ?? 0;
+    const top = numberValue(referenceRect?.top ?? referenceRect?.y) ?? 0;
+    const right = numberValue(referenceRect?.right) ?? left + (numberValue(referenceRect?.width) ?? 1);
+    const bottom = numberValue(referenceRect?.bottom) ?? top + (numberValue(referenceRect?.height) ?? 1);
+    const centerX = (left + right) / 2;
+    const centerY = (top + bottom) / 2;
+    const cropLeft = clampInteger(left - 420, 0, Math.max(0, width - 1));
+    const cropTop = clampInteger(top - 90, 0, Math.max(0, height - 1));
+    const cropRight = clampInteger(Math.max(right + 80, cropLeft + 420), cropLeft + 1, width);
+    const cropBottom = clampInteger(Math.max(bottom + 90, cropTop + 260), cropTop + 1, height);
+    const stateName = typeof overlap.stateName === "string" ? overlap.stateName : undefined;
+    const fixedSelector = typeof overlap.fixedSelector === "string" ? overlap.fixedSelector : undefined;
+    return {
+      kind: "overlap",
+      label: "Problem crop: sticky overlap",
+      detail: [stateName, fixedSelector].filter(Boolean).join(" / ") || "fixed/sticky element overlap",
+      xPercent: percent(centerX, width),
+      yPercent: percent(centerY, height),
+      crop: { x: cropLeft, y: cropTop, width: cropRight - cropLeft, height: cropBottom - cropTop }
+    };
+  }
+
+  const manualContext = typeof evidence.manualContext === "string" ? evidence.manualContext : "";
+  if (width && height && manualContext) {
+    const cropWidth = Math.min(width, 760);
+    const cropHeight = Math.min(height, 520);
+    const cropX = clampInteger(width - cropWidth - 20, 0, Math.max(0, width - cropWidth));
+    const cropY = clampInteger(Math.round(height * 0.18), 0, Math.max(0, height - cropHeight));
+    return {
+      kind: "manual",
+      label: "Problem crop: manual evidence area",
+      detail: manualContext,
+      xPercent: 70,
+      yPercent: 45,
+      crop: { x: cropX, y: cropY, width: cropWidth, height: cropHeight }
+    };
+  }
+
+  return undefined;
+}
+
+function firstOverlap(evidence: Record<string, unknown>): Record<string, unknown> | undefined {
+  const overlaps = Array.isArray(evidence.overlaps)
+    ? evidence.overlaps
+    : Array.isArray(evidence.stickyOverlaps)
+      ? evidence.stickyOverlaps
+      : undefined;
+  return overlaps?.map(asRecord).find((record): record is Record<string, unknown> => Boolean(record));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function percent(value: number, total: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return 50;
+  return Math.max(0, Math.min(100, (value / total) * 100));
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  if (max < min) return min;
+  return Math.max(min, Math.min(max, Math.round(value)));
 }
 
 function renderDashboardIndex(report: RunReport, dashboardSiteIds: SiteId[]): string {
@@ -84,7 +261,7 @@ function renderDashboardIndex(report: RunReport, dashboardSiteIds: SiteId[]): st
     <section class="grid stats">
       ${statCard("Routes", String(report.summary.routesDiscovered), "Discovered pages and configured surfaces")}
       ${statCard("Pages", String(report.summary.pagesChecked), "HTTP and surface checks")}
-      ${statCard("Screenshots", String(report.summary.screenshotsCaptured), "Captured full-page artifacts")}
+      ${statCard("Screenshots", String(report.summary.screenshotsCaptured), "Captured visual evidence artifacts")}
       ${statCard("Findings", String(report.summary.findingsTotal), severityLine(report))}
     </section>
     <section class="panel">
@@ -141,7 +318,7 @@ function renderDashboard(report: RunReport, siteId: SiteId): string {
     <section class="grid stats">
       ${statCard("Routes", String(scopedReport.summary.routesDiscovered), "Discovered pages and configured surfaces")}
       ${statCard("Pages", String(scopedReport.summary.pagesChecked), "HTTP and surface checks")}
-      ${statCard("Screenshots", String(scopedReport.summary.screenshotsCaptured), "Captured full-page artifacts")}
+      ${statCard("Screenshots", String(scopedReport.summary.screenshotsCaptured), "Captured visual evidence artifacts")}
       ${statCard("Findings", String(scopedReport.summary.findingsTotal), severityLine(scopedReport))}
     </section>
 
@@ -325,7 +502,9 @@ function renderRunStatusPanel(report: RunReport, siteId: SiteId | undefined): st
   const byType = groupCount(report.findings, (finding) => finding.checkType);
   const mode = siteId ? `--site ${siteId}` : "--site all";
   const localCommand = report.summary.screenshotsCaptured > 0
-    ? siteId
+    ? siteId === "ai-native"
+      ? "npm run qa:ai-native && npm run dashboard"
+      : siteId
       ? `npm run qa -- ${mode} --screenshots --screenshot-viewports mobile,tablet,desktop,hd --screenshot-limit 0 --max-crawl-pages 120 && npm run dashboard`
       : "npm run qa:monthly && npm run dashboard"
     : `npm run qa -- ${mode} --max-crawl-pages 80 && npm run dashboard`;
@@ -421,18 +600,55 @@ function renderFindingEvidenceAssets(finding: Finding): string {
   const filePath = stringEvidence(finding, "filePath");
   const baselinePath = stringEvidence(finding, "baselinePath");
   const retryPath = stringEvidence(finding, "retryPath");
+  const currentPath = filePath ? toReportRelativePath(filePath) : undefined;
+  const cropPath = evidenceCropIndex.get(finding.id);
+  const cropReportPath = cropPath ? toReportRelativePath(cropPath) : undefined;
+  const previewPath = cropReportPath ?? currentPath;
+  const galleryAnchor = filePath ? artifactAnchor(filePath) : undefined;
+  const focus = evidenceFocusIndex.get(finding.id) ?? findingEvidenceFocus(finding);
+  const evidenceLabel = screenshotEvidenceLabel(finding);
   const links = [
+    cropPath ? ["Problem crop", cropPath] : undefined,
+    filePath ? ["Open exact screenshot", filePath] : undefined,
+    galleryAnchor ? ["Gallery card", `#${galleryAnchor}`] : undefined,
     diffPath ? ["Diff", diffPath] : undefined,
-    filePath ? ["Current", filePath] : undefined,
     retryPath ? ["Scroll retry", retryPath] : undefined,
     baselinePath ? ["Baseline", baselinePath] : undefined
   ].filter((item): item is [string, string] => Boolean(item));
 
   if (links.length === 0) return "";
 
-  return `<div class="asset-links">
-    ${links.map(([label, target]) => `<a href="${escapeAttribute(toReportRelativePath(target))}">${escapeHtml(label)}</a>`).join("")}
+  return `${previewPath ? `<a class="evidence-preview ${focus ? `focus-${escapeAttribute(focus.kind)}` : ""}" href="${escapeAttribute(currentPath ?? previewPath)}" style="${evidenceFocusStyle(focus)}">
+    <span class="evidence-preview-frame">
+      <img src="${escapeAttribute(previewPath)}" alt="${escapeAttribute(focus?.label ?? evidenceLabel)}" loading="lazy" />
+    </span>
+    <span class="evidence-preview-copy">
+      <strong>${escapeHtml(focus?.label ?? "Evidence preview")}</strong>
+      <span>${escapeHtml(focus?.detail ?? evidenceLabel)}</span>
+      <em>${escapeHtml(evidenceLabel)}</em>
+    </span>
+  </a>` : ""}
+  <div class="asset-links">
+    ${links.map(([label, target]) => `<a href="${escapeAttribute(target.startsWith("#") ? target : toReportRelativePath(target))}">${escapeHtml(label)}</a>`).join("")}
   </div>`;
+}
+
+function evidenceFocusStyle(focus: EvidenceFocus | undefined): string {
+  if (!focus) return "";
+  return `--evidence-focus-x:${focus.xPercent.toFixed(2)}%; --evidence-focus-y:${focus.yPercent.toFixed(2)}%;`;
+}
+
+function screenshotEvidenceLabel(finding: Finding): string {
+  const evidence = finding.evidence ?? {};
+  const browserEngine = typeof evidence.browserEngine === "string" ? evidence.browserEngine : undefined;
+  const viewport = evidence.viewport && typeof evidence.viewport === "object" ? evidence.viewport as { name?: unknown } : undefined;
+  const state = evidence.state && typeof evidence.state === "object" ? evidence.state as { name?: unknown } : undefined;
+  const parts = [
+    browserEngine,
+    typeof viewport?.name === "string" ? viewport.name : undefined,
+    typeof state?.name === "string" ? state.name : undefined
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" / ") : "Evidence screenshot";
 }
 
 function renderFindingReferences(finding: Finding): string {
@@ -472,19 +688,35 @@ function renderScreenshots(screenshots: ScreenshotArtifact[]): string {
     return `<p class="empty">No screenshots captured in this run.</p>`;
   }
 
-  return `<div class="gallery">
-    ${captured
+  const suspiciousCount = captured.filter(isSuspiciousScreenshot).length;
+  const changedCount = captured.filter((screenshot) => screenshot.baselineStatus === "changed").length;
+  const blankCount = captured.filter((screenshot) => Boolean(screenshot.image?.isProbablyBlank || screenshot.image?.largestBlankRegion)).length;
+  const overlapCount = captured.filter((screenshot) => (screenshot.stickyOverlaps?.length ?? 0) > 0).length;
+  const sorted = [...captured].sort((a, b) => Number(isSuspiciousScreenshot(b)) - Number(isSuspiciousScreenshot(a)));
+
+  const summary = `<div class="gallery-summary">
+    <span><strong>${captured.length}</strong> screenshots</span>
+    <span><strong>${suspiciousCount}</strong> suspicious</span>
+    <span><strong>${changedCount}</strong> changed</span>
+    <span><strong>${blankCount}</strong> blank-band</span>
+    <span><strong>${overlapCount}</strong> overlap candidates</span>
+  </div>`;
+
+  return `${summary}<div class="gallery">
+    ${sorted
       .map((screenshot) => {
         const relativePath = toPosix(path.relative(renderOutputDir, path.join(process.cwd(), screenshot.filePath)));
-        return `<figure>
-          <a href="${escapeAttribute(relativePath)}"><img src="${escapeAttribute(relativePath)}" alt="${escapeAttribute(screenshot.url)} at ${escapeAttribute(screenshot.viewport.name)}" loading="lazy" /></a>
+        return `<figure id="${escapeAttribute(artifactAnchor(screenshot.filePath))}" class="${escapeAttribute(screenshotReviewClass(screenshot))}">
+          <a class="screenshot-frame" href="${escapeAttribute(relativePath)}"><img src="${escapeAttribute(relativePath)}" alt="${escapeAttribute(screenshot.url)} at ${escapeAttribute(screenshot.viewport.name)}" loading="lazy" /></a>
           <figcaption>
-            <strong>${escapeHtml(screenshot.siteId)} / ${escapeHtml(screenshot.viewport.name)}</strong>
+            <strong>${escapeHtml(screenshot.siteId)} / ${escapeHtml(screenshot.browserEngine ?? "browser")} / ${escapeHtml(screenshot.viewport.name)}</strong>
+            <span>${escapeHtml(screenshot.captureKind ?? "full-page")}${screenshot.state ? ` / ${escapeHtml(screenshot.state.name)}` : ""}</span>
             <span><span class="pill ${baselinePillClass(screenshot.baselineStatus)}">${escapeHtml(screenshot.baselineStatus ?? "not-checked")}</span></span>
             ${screenshot.visualDiff ? `<span>${(screenshot.visualDiff.mismatchRatio * 100).toFixed(2)}% diff / ${screenshot.visualDiff.mismatchPixels} px</span>` : ""}
             ${screenshot.image ? `<span>${screenshot.image.width}x${screenshot.image.height} / ${screenshot.image.isProbablyBlank ? "possible blank" : "content detected"}</span>` : ""}
             ${screenshot.image?.largestBlankRegion ? `<span>${screenshot.image.largestBlankRegion.height}px blank band at y=${screenshot.image.largestBlankRegion.startY}</span>` : ""}
             ${screenshot.blankRegionRetry ? `<span>scroll retry: ${escapeHtml(screenshot.blankRegionRetry.status)}</span>` : ""}
+            ${screenshot.stickyOverlaps?.length ? `<span>${screenshot.stickyOverlaps.length} fixed/sticky overlap candidate(s)</span>` : ""}
             <span>${escapeHtml(screenshot.url)}</span>
             ${screenshot.byteSize ? `<span>${Math.round(screenshot.byteSize / 1024)} KB</span>` : ""}
             ${screenshot.baselineStatus === "changed" && screenshot.diffPath ? `<a href="${escapeAttribute(toReportRelativePath(screenshot.diffPath))}">Open diff</a>` : ""}
@@ -493,6 +725,29 @@ function renderScreenshots(screenshots: ScreenshotArtifact[]): string {
       })
       .join("")}
   </div>`;
+}
+
+function screenshotReviewClass(screenshot: ScreenshotArtifact): string {
+  const classes = ["screenshot-card"];
+  if (isSuspiciousScreenshot(screenshot)) classes.push("suspicious");
+  if (screenshot.baselineStatus === "changed") classes.push("changed");
+  if (screenshot.image?.isProbablyBlank || screenshot.image?.largestBlankRegion) classes.push("blank");
+  if ((screenshot.stickyOverlaps?.length ?? 0) > 0) classes.push("overlap");
+  return classes.join(" ");
+}
+
+function artifactAnchor(filePath: string): string {
+  return `shot-${createHash("sha1").update(filePath).digest("hex").slice(0, 12)}`;
+}
+
+function isSuspiciousScreenshot(screenshot: ScreenshotArtifact): boolean {
+  return Boolean(
+    screenshot.baselineStatus === "changed" ||
+      screenshot.image?.isProbablyBlank ||
+      screenshot.image?.largestBlankRegion ||
+      screenshot.blankRegionRetry ||
+      (screenshot.stickyOverlaps?.length ?? 0) > 0
+  );
 }
 
 function renderLinkIntents(report: RunReport): string {
@@ -598,8 +853,8 @@ function renderAgentReadability(report: RunReport): string {
   </div>`;
 }
 
-function renderMarkdownMirrorPills(mirrors: RunReport["checks"][number]["markdownMirrors"]): string {
-  if (mirrors.length === 0) return "";
+function renderMarkdownMirrorPills(mirrors: RunReport["checks"][number]["markdownMirrors"] | undefined): string {
+  if (!mirrors || mirrors.length === 0) return "";
   return mirrors
     .map((mirror) => `<a class="token ${mirror.status === "matched" ? "" : "gap"}" href="${escapeAttribute(mirror.url)}">mirror ${escapeHtml(mirror.status)} ${mirror.similarityPercent}/100</a>`)
     .join(" ");
@@ -1412,6 +1667,32 @@ function css(): string {
       font-size: 12px;
       font-weight: 700;
     }
+    .evidence-thumb {
+      display: block;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      color: inherit;
+      text-decoration: none;
+      background: #f8f8f4;
+    }
+    .evidence-thumb img {
+      display: block;
+      width: 100%;
+      max-height: 260px;
+      object-fit: contain;
+      object-position: top center;
+      background: #111;
+      border-bottom: 1px solid var(--line);
+    }
+    .evidence-thumb span {
+      display: block;
+      padding: 8px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
     .finding-sources {
       margin-top: 12px;
       padding-top: 10px;
@@ -1438,6 +1719,442 @@ function css(): string {
       .run-meta { align-items: flex-start; }
       .stats, .calendar, .run-status-grid, .history-card { grid-template-columns: 1fr; }
       main { padding-inline: 14px; }
+    }
+
+    :root {
+      --bg: #eef3f8;
+      --bg-soft: #f7f9fc;
+      --panel: rgba(255, 255, 255, 0.84);
+      --panel-strong: #ffffff;
+      --ink: #142033;
+      --muted: #647184;
+      --faint: #8795a8;
+      --line: #d7e0eb;
+      --line-strong: #b9c8d9;
+      --ok: #16784b;
+      --warn: #9a6500;
+      --fail: #bd2d23;
+      --info: #315d9b;
+      --cyan: #1f7a86;
+      --code-bg: #101824;
+      --code-ink: #e8eef7;
+      --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    html { min-height: 100%; max-width: 100%; overflow-x: clip; scroll-behavior: smooth; }
+    body {
+      min-height: 100%;
+      max-width: 100%;
+      overflow-x: clip;
+      background:
+        linear-gradient(90deg, rgba(49, 93, 155, 0.045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(49, 93, 155, 0.035) 1px, transparent 1px),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 48%, #e8f0f7 100%);
+      background-size: 44px 44px, 44px 44px, auto;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.44;
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "tnum";
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 520px);
+      gap: 24px;
+      align-items: center;
+      padding: 15px 22px;
+      border-bottom: 1px solid rgba(130, 151, 174, 0.42);
+      background: rgba(246, 250, 254, 0.82);
+      backdrop-filter: blur(16px);
+    }
+    .topbar > div:first-child {
+      position: relative;
+      min-width: 0;
+      padding-left: 44px;
+    }
+    .topbar > div:first-child::before {
+      content: "AIM";
+      position: absolute;
+      left: 0;
+      top: 1px;
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: #f7fbff;
+      font-size: 9px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    h1 {
+      margin-top: 10px;
+      font-size: clamp(28px, 3.4vw, 48px);
+      font-weight: 900;
+      line-height: 0.96;
+      text-transform: uppercase;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    h2 { font-size: clamp(22px, 2.4vw, 34px); line-height: 1.02; }
+    h3 { line-height: 1.12; }
+    h4 { line-height: 1.18; }
+    .eyebrow {
+      color: var(--info);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .run-meta {
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      max-width: 520px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .run-meta > * {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 9px;
+      border: 1px solid rgba(130, 151, 174, 0.34);
+      background: rgba(255, 255, 255, 0.58);
+      color: inherit;
+      text-decoration: none;
+    }
+    .run-meta a:hover { border-color: var(--info); color: var(--info); background: #fff; }
+    main { width: min(1500px, calc(100vw - 32px)); padding: 26px 0 64px; }
+    .stats { gap: 14px; }
+    .stat-card, .panel, .calendar-card, .finding-card, figure {
+      border-color: var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+    .stat-card {
+      position: relative;
+      min-height: 132px;
+      padding: 18px;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgba(49, 93, 155, 0.055) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(49, 93, 155, 0.04) 1px, transparent 1px),
+        rgba(255, 255, 255, 0.78);
+      background-size: 24px 24px;
+    }
+    .stat-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-left: 5px solid rgba(49, 93, 155, 0.34);
+      pointer-events: none;
+    }
+    .stat-value { font-size: clamp(34px, 4vw, 52px); font-weight: 900; line-height: 0.92; }
+    .stat-label { margin-top: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat-card p, .calendar-card p, .finding-card p, figcaption span { color: var(--muted); font-size: 12px; }
+    .panel {
+      padding: clamp(18px, 2.2vw, 28px);
+      background:
+        linear-gradient(90deg, rgba(49, 93, 155, 0.04) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(49, 93, 155, 0.032) 1px, transparent 1px),
+        var(--panel);
+      background-size: 32px 32px;
+      backdrop-filter: blur(8px);
+    }
+    .section-head {
+      align-items: flex-start;
+      gap: 18px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(130, 151, 174, 0.28);
+    }
+    .calendar-card, .run-status-card, .rerun-box, .history-card, .top-findings a {
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+    .calendar-card .date { font-family: var(--mono); }
+    .run-status-card h3, .rerun-box h3, .top-findings h3 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    pre {
+      max-width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      background: var(--code-bg);
+      color: var(--code-ink);
+      overflow-x: auto;
+      contain: paint;
+    }
+    .top-findings a {
+      border-left: 5px solid rgba(189, 45, 35, 0.42);
+    }
+    .compact-panel code { border-radius: 6px; background: #e8eef6; }
+    .site-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .site-card {
+      min-height: 168px;
+      padding: 22px;
+      border-color: var(--line);
+      border-radius: 18px;
+      background:
+        linear-gradient(90deg, rgba(49, 93, 155, 0.05) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(49, 93, 155, 0.038) 1px, transparent 1px),
+        rgba(255, 255, 255, 0.78);
+      background-size: 28px 28px;
+      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }
+    .site-card:hover, .site-card:focus-visible {
+      transform: translateY(-3px);
+      border-color: var(--info);
+      background-color: #fff;
+      outline: none;
+    }
+    .site-card.not-run { background: rgba(246, 249, 252, 0.62); }
+    .site-card strong { font-size: clamp(28px, 3vw, 42px); line-height: 0.98; }
+    .pill {
+      align-items: center;
+      width: fit-content;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+      background: rgba(255, 255, 255, 0.62);
+    }
+    .pill.info, .pill.low, .pill.medium { color: var(--info); }
+    .token { background: #eaf0f7; color: #34445a; }
+    .token.gap { background: #fff4d8; color: #6c4a00; }
+    .score-track { background: #dfe7f0; }
+    .findings-board { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+    .finding-column h3 { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+    .finding-card {
+      border-left-width: 6px;
+      background: rgba(255, 255, 255, 0.8);
+    }
+    .finding-card.critical, .finding-card.high {
+      background: linear-gradient(90deg, rgba(189, 45, 35, 0.09), rgba(255, 255, 255, 0.86) 34%);
+    }
+    .finding-card.medium, .finding-card.low {
+      background: linear-gradient(90deg, rgba(154, 101, 0, 0.08), rgba(255, 255, 255, 0.86) 34%);
+    }
+    .remediation-box {
+      border-color: #ead7aa;
+      border-radius: 12px;
+      background: #fff8e7;
+    }
+    .asset-links a {
+      align-items: center;
+      background: rgba(255, 255, 255, 0.7);
+    }
+    .asset-links a:hover { border-color: var(--info); background: #fff; }
+    .evidence-thumb {
+      border-color: var(--line-strong);
+      border-radius: 12px;
+      background: #f4f7fb;
+    }
+    .evidence-thumb img {
+      max-height: 320px;
+      background: #0d131d;
+    }
+    .evidence-preview {
+      display: grid;
+      grid-template-columns: 148px minmax(0, 1fr);
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      background: rgba(244, 247, 251, 0.92);
+      color: inherit;
+      overflow: hidden;
+      text-decoration: none;
+    }
+    .evidence-preview:hover {
+      border-color: var(--info);
+      background: #fff;
+    }
+    .evidence-preview-frame {
+      display: block;
+      height: 112px;
+      min-height: 104px;
+      background: #0d131d;
+      overflow: hidden;
+    }
+    .evidence-preview-frame img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: var(--evidence-focus-x, 50%) var(--evidence-focus-y, 50%);
+      background: #0d131d;
+    }
+    .evidence-preview-copy {
+      display: grid;
+      align-content: center;
+      gap: 4px;
+      min-width: 0;
+      padding: 10px 10px 10px 0;
+    }
+    .evidence-preview-copy strong {
+      font-size: 11px;
+      line-height: 1.2;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .evidence-preview-copy span,
+    .evidence-preview-copy em {
+      color: var(--muted);
+      font-size: 11px;
+      font-style: normal;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+    }
+    .evidence-preview.focus-blank {
+      border-color: rgba(154, 101, 0, 0.62);
+      background: linear-gradient(90deg, rgba(255, 248, 231, 0.95), rgba(255, 255, 255, 0.78));
+    }
+    .evidence-preview.focus-overlap,
+    .evidence-preview.focus-manual {
+      border-color: rgba(189, 45, 35, 0.62);
+      background: linear-gradient(90deg, rgba(255, 244, 242, 0.95), rgba(255, 255, 255, 0.78));
+    }
+    a { color: #245995; text-underline-offset: 2px; }
+    .gallery-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .gallery-summary span {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .gallery-summary strong { color: var(--ink); }
+    .gallery { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    figure {
+      background: rgba(255, 255, 255, 0.76);
+    }
+    figure.suspicious {
+      border-color: rgba(189, 45, 35, 0.78);
+      background: linear-gradient(180deg, rgba(255, 244, 242, 0.94), rgba(255, 255, 255, 0.82));
+    }
+    figure.changed { border-color: rgba(154, 101, 0, 0.72); }
+    figure.overlap { border-color: rgba(189, 45, 35, 0.88); }
+    figure.blank { border-color: rgba(154, 101, 0, 0.8); }
+    .screenshot-frame {
+      display: block;
+      background: #0d131d;
+      border-bottom: 1px solid var(--line);
+    }
+    figure img {
+      height: 230px;
+      aspect-ratio: auto;
+      object-fit: contain;
+      object-position: top center;
+      background: #0d131d;
+    }
+    figure.suspicious img { background: #12120f; }
+    figure:target {
+      outline: 3px solid rgba(49, 93, 155, 0.36);
+      outline-offset: 4px;
+    }
+    figcaption { min-height: 148px; }
+    figcaption strong { font-size: 12px; line-height: 1.25; }
+    figcaption .pill { margin-top: 0; }
+    .table-wrap {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      contain: paint;
+      -webkit-overflow-scrolling: touch;
+    }
+    .table-wrap table {
+      width: max-content;
+      min-width: 100%;
+      max-width: none;
+    }
+    tr:hover td { background: rgba(255, 255, 255, 0.46); }
+    ::selection { background: rgba(49, 93, 155, 0.18); }
+    @media (max-width: 900px) {
+      .topbar {
+        display: grid;
+        grid-template-columns: 1fr;
+        position: static;
+        align-items: flex-start;
+        padding: 16px;
+      }
+      .topbar > div:first-child { padding-left: 40px; }
+      .run-meta { justify-content: flex-start; align-items: center; }
+      main { width: min(100% - 24px, 1500px); padding: 18px 0 48px; }
+      .section-head { flex-direction: column; }
+      .gallery { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+      figure img { height: 190px; }
+      figcaption { min-height: 128px; }
+      .evidence-preview {
+        grid-template-columns: 1fr;
+      }
+      .evidence-preview-frame {
+        height: 150px;
+        aspect-ratio: 16 / 9;
+      }
+      .evidence-preview-copy {
+        padding: 10px;
+      }
+      .table-wrap {
+        overflow-x: hidden;
+        contain: layout paint;
+      }
+      .table-wrap table,
+      .table-wrap thead,
+      .table-wrap tbody,
+      .table-wrap tr,
+      .table-wrap th,
+      .table-wrap td {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+      }
+      .table-wrap thead { display: none; }
+      .table-wrap tr {
+        margin-bottom: 10px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.7);
+      }
+      .table-wrap td {
+        padding: 7px 0;
+        border-bottom: 1px solid rgba(130, 151, 174, 0.24);
+        overflow-wrap: anywhere;
+      }
+      .table-wrap td:last-child { border-bottom: 0; }
+    }
+    @media (max-width: 520px) {
+      h1 { font-size: clamp(27px, 12vw, 44px); }
+      .stats { gap: 10px; }
+      .panel { padding: 14px; border-radius: 14px; }
+      .site-card { min-height: 138px; padding: 16px; }
+      .findings-board { grid-template-columns: 1fr; }
+      .gallery { grid-template-columns: 1fr; }
+      figure img { height: 250px; }
+      .run-meta > * { max-width: 100%; }
     }
   `;
 }

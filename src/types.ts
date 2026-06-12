@@ -1,5 +1,7 @@
 export type SiteId = "production" | "staging" | "ai-native";
 
+export type BrowserEngine = "chromium" | "firefox" | "webkit";
+
 export type RunMode =
   | "production-regression"
   | "staging-regression"
@@ -41,6 +43,7 @@ export interface RoutesConfig {
     sitemap: string | null;
   };
   seedPaths: string[];
+  visualStates?: VisualStateConfig[];
   knownFindings?: Array<{
     path: string;
     finding: string;
@@ -56,6 +59,13 @@ export interface ViewportConfig {
   name: string;
   width: number;
   height: number;
+}
+
+export interface VisualStateConfig {
+  name: string;
+  selector?: string;
+  scrollY?: number;
+  description?: string;
 }
 
 export interface BrowserMatrixConfig {
@@ -199,6 +209,9 @@ export interface AgentMarkdownMirrorCheck {
 export interface ScreenshotArtifact {
   siteId: SiteId;
   url: string;
+  browserEngine?: BrowserEngine;
+  captureKind?: "full-page" | "viewport-state" | "focused";
+  state?: ScreenshotState;
   viewport: ViewportConfig;
   filePath: string;
   baselinePath?: string;
@@ -209,8 +222,44 @@ export interface ScreenshotArtifact {
   sha256?: string;
   image?: ScreenshotImageAnalysis;
   blankRegionRetry?: ScreenshotBlankRegionRetry;
+  stickyOverlaps?: StickyOverlapIssue[];
   visualDiff?: VisualDiffResult;
   error?: string;
+}
+
+export interface ScreenshotState {
+  name: string;
+  selector?: string;
+  scrollY: number;
+  description?: string;
+}
+
+export interface ElementRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface StickyOverlapIssue {
+  kind: "overlap" | "near-overlap";
+  stateName: string;
+  scrollY: number;
+  fixedSelector: string;
+  fixedPosition: "fixed" | "sticky";
+  fixedText?: string;
+  fixedRect: ElementRect;
+  contentSelector: string;
+  contentText?: string;
+  contentRect: ElementRect;
+  intersection?: ElementRect;
+  intersectionArea?: number;
+  horizontalGap?: number;
+  verticalOverlap?: number;
 }
 
 export interface ScreenshotImageAnalysis {

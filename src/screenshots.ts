@@ -1,10 +1,22 @@
 import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from "@playwright/test";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
-import type { DiscoveredRoute, ScreenshotArtifact, ScreenshotImageAnalysis, SiteConfig, ViewportConfig, VisualDiffResult } from "./types.js";
+import type {
+  BrowserEngine,
+  DiscoveredRoute,
+  ElementRect,
+  ScreenshotArtifact,
+  ScreenshotImageAnalysis,
+  ScreenshotState,
+  SiteConfig,
+  StickyOverlapIssue,
+  ViewportConfig,
+  VisualDiffResult,
+  VisualStateConfig
+} from "./types.js";
 import { safeFilenameFromUrl } from "./url-utils.js";
 
 const pixelmatchThreshold = 0.15;
@@ -15,10 +27,20 @@ const blankRegionThresholdPx = 600;
 export interface ScreenshotOptions {
   outputDir: string;
   viewports: ViewportConfig[];
+  browserEngines?: BrowserEngine[];
+  visualStates?: VisualStateConfig[];
+  stateScreenshots?: boolean;
+  fullPageScreenshots?: boolean;
   limit: number;
   baselineDir?: string;
   diffDir?: string;
 }
+
+const browserTypes: Record<BrowserEngine, BrowserType> = {
+  chromium,
+  firefox,
+  webkit
+};
 
 export async function captureScreenshots(
   site: SiteConfig,
@@ -27,37 +49,57 @@ export async function captureScreenshots(
 ): Promise<ScreenshotArtifact[]> {
   const selectedRoutes = options.limit > 0 ? routes.slice(0, options.limit) : routes;
   const artifacts: ScreenshotArtifact[] = [];
+  const browserEngines: BrowserEngine[] = options.browserEngines?.length ? options.browserEngines : ["chromium"];
 
   await mkdir(options.outputDir, { recursive: true });
-  const browser = await chromium.launch({ headless: true });
 
-  try {
-    for (const viewport of options.viewports) {
-      const context = await newScreenshotContext(browser, viewport);
+  for (const browserEngine of browserEngines) {
+    const browser = await browserTypes[browserEngine].launch({ headless: true });
 
-      for (const route of selectedRoutes) {
-        const artifact = await captureScreenshotArtifact(context, site, route, viewport, options);
-        if (artifact.status === "captured") {
-          artifacts.push(artifact);
-        } else {
-          const retryContext = await newScreenshotContext(browser, viewport);
-          const retryArtifact = await captureScreenshotArtifact(retryContext, site, route, viewport, options);
-          await retryContext.close().catch(() => undefined);
-          artifacts.push(
-            retryArtifact.status === "captured"
-              ? retryArtifact
-              : {
-                  ...retryArtifact,
-                  error: `${artifact.error ?? "First capture failed."}\nRetry failed: ${retryArtifact.error ?? "Unknown retry error."}`
-                }
-          );
+    try {
+      for (const viewport of options.viewports) {
+        const context = await newScreenshotContext(browser, viewport);
+
+        if (options.fullPageScreenshots !== false) {
+          for (const route of selectedRoutes) {
+            const artifact = await captureScreenshotArtifact(context, site, route, viewport, browserEngine, options);
+            if (artifact.status === "captured") {
+              artifacts.push(artifact);
+            } else {
+              const retryContext = await newScreenshotContext(browser, viewport);
+              const retryArtifact = await captureScreenshotArtifact(retryContext, site, route, viewport, browserEngine, options);
+              await retryContext.close().catch(() => undefined);
+              artifacts.push(
+                retryArtifact.status === "captured"
+                  ? retryArtifact
+                  : {
+                      ...retryArtifact,
+                      error: `${artifact.error ?? "First capture failed."}\nRetry failed: ${retryArtifact.error ?? "Unknown retry error."}`
+                    }
+              );
+            }
+          }
+        }
+
+        await context.close();
+
+        if (options.stateScreenshots && options.visualStates?.length) {
+          const stateRoutes = selectedRoutes.filter((route) => new URL(route.url).pathname === "/");
+          if (stateRoutes.length > 0) {
+            const stateContext = await newScreenshotContext(browser, viewport);
+            try {
+              for (const route of stateRoutes) {
+                artifacts.push(...(await captureStateScreenshotArtifacts(stateContext, site, route, viewport, browserEngine, options)));
+              }
+            } finally {
+              await stateContext.close().catch(() => undefined);
+            }
+          }
         }
       }
-
-      await context.close();
+    } finally {
+      await browser.close();
     }
-  } finally {
-    await browser.close();
   }
 
   return artifacts;
@@ -76,16 +118,17 @@ async function captureScreenshotArtifact(
   site: SiteConfig,
   route: DiscoveredRoute,
   viewport: ViewportConfig,
+  browserEngine: BrowserEngine,
   options: ScreenshotOptions
 ): Promise<ScreenshotArtifact> {
-  const siteDir = path.join(options.outputDir, site.id, viewport.name);
+  const siteDir = path.join(options.outputDir, site.id, browserEngine, viewport.name);
   await mkdir(siteDir, { recursive: true });
   const filePath = path.join(siteDir, `${safeFilenameFromUrl(route.url)}.png`);
   const baselinePath = options.baselineDir
-    ? path.join(options.baselineDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.png`)
+    ? path.join(options.baselineDir, site.id, browserEngine, viewport.name, `${safeFilenameFromUrl(route.url)}.png`)
     : undefined;
   const diffPath = options.diffDir
-    ? path.join(options.diffDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.diff.png`)
+    ? path.join(options.diffDir, site.id, browserEngine, viewport.name, `${safeFilenameFromUrl(route.url)}.diff.png`)
     : undefined;
   const page = await context.newPage();
   page.setDefaultNavigationTimeout(30000);
@@ -107,6 +150,8 @@ async function captureScreenshotArtifact(
     return {
       siteId: site.id,
       url: route.url,
+      browserEngine,
+      captureKind: "full-page",
       viewport,
       filePath,
       baselinePath,
@@ -123,6 +168,8 @@ async function captureScreenshotArtifact(
     return {
       siteId: site.id,
       url: route.url,
+      browserEngine,
+      captureKind: "full-page",
       viewport,
       filePath,
       baselinePath,
@@ -136,6 +183,339 @@ async function captureScreenshotArtifact(
   }
 }
 
+async function captureStateScreenshotArtifacts(
+  context: BrowserContext,
+  site: SiteConfig,
+  route: DiscoveredRoute,
+  viewport: ViewportConfig,
+  browserEngine: BrowserEngine,
+  options: ScreenshotOptions
+): Promise<ScreenshotArtifact[]> {
+  const page = await context.newPage();
+  page.setDefaultNavigationTimeout(30000);
+  page.setDefaultTimeout(20000);
+
+  try {
+    await gotoForScreenshot(page, route.url);
+    await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => undefined);
+    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
+    await page.waitForTimeout(1000);
+
+    const artifacts: ScreenshotArtifact[] = [];
+    for (const visualState of options.visualStates ?? []) {
+      artifacts.push(await captureStateScreenshotArtifact(page, site, route, viewport, browserEngine, visualState, options));
+    }
+
+    return artifacts;
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
+
+async function captureStateScreenshotArtifact(
+  page: Page,
+  site: SiteConfig,
+  route: DiscoveredRoute,
+  viewport: ViewportConfig,
+  browserEngine: BrowserEngine,
+  visualState: VisualStateConfig,
+  options: ScreenshotOptions
+): Promise<ScreenshotArtifact> {
+  const siteDir = path.join(options.outputDir, site.id, browserEngine, viewport.name);
+  await mkdir(siteDir, { recursive: true });
+  const stateName = safeStateName(visualState.name);
+  const filePath = path.join(siteDir, `${safeFilenameFromUrl(route.url)}.${stateName}.viewport.png`);
+  const baselinePath = options.baselineDir
+    ? path.join(options.baselineDir, site.id, browserEngine, viewport.name, `${safeFilenameFromUrl(route.url)}.${stateName}.viewport.png`)
+    : undefined;
+  const diffPath = options.diffDir
+    ? path.join(options.diffDir, site.id, browserEngine, viewport.name, `${safeFilenameFromUrl(route.url)}.${stateName}.viewport.diff.png`)
+    : undefined;
+  const fallbackState: ScreenshotState = {
+    name: visualState.name,
+    selector: visualState.selector,
+    scrollY: visualState.scrollY ?? 0,
+    description: visualState.description
+  };
+
+  try {
+    const state = await scrollToVisualState(page, visualState, viewport);
+    const stickyOverlaps = await detectStickyOverlaps(page, state);
+    await page.screenshot({ path: filePath, fullPage: false, animations: "disabled", timeout: 20000 });
+    const metadata = await fileMetadata(filePath);
+    const comparison = baselinePath
+      ? await compareOrCreateBaseline(filePath, baselinePath, metadata.sha256, diffPath)
+      : { baselineStatus: "not-checked" as const };
+
+    return {
+      siteId: site.id,
+      url: route.url,
+      browserEngine,
+      captureKind: "viewport-state",
+      state,
+      viewport,
+      filePath,
+      baselinePath,
+      diffPath: comparison.diffPath,
+      status: "captured",
+      baselineStatus: comparison.baselineStatus,
+      byteSize: metadata.byteSize,
+      sha256: metadata.sha256,
+      image: metadata.image,
+      stickyOverlaps,
+      visualDiff: comparison.visualDiff
+    };
+  } catch (error) {
+    return {
+      siteId: site.id,
+      url: route.url,
+      browserEngine,
+      captureKind: "viewport-state",
+      state: fallbackState,
+      viewport,
+      filePath,
+      baselinePath,
+      diffPath,
+      status: "failed",
+      baselineStatus: "missing",
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+async function scrollToVisualState(page: Page, visualState: VisualStateConfig, viewport: ViewportConfig): Promise<ScreenshotState> {
+  const scrollY = await page.evaluate(
+    ({ selector, configuredScrollY, viewportHeight }) => {
+      if (typeof configuredScrollY === "number") {
+        return Math.max(0, Math.round(configuredScrollY));
+      }
+
+      if (!selector) return 0;
+      const element = document.querySelector(selector);
+      if (!element) return 0;
+      const rect = element.getBoundingClientRect();
+      const offset = Math.max(16, Math.round(viewportHeight * 0.08));
+      return Math.max(0, Math.round(window.scrollY + rect.top - offset));
+    },
+    { selector: visualState.selector, configuredScrollY: visualState.scrollY, viewportHeight: viewport.height }
+  );
+
+  await page.evaluate((targetY) => window.scrollTo({ top: targetY, left: 0, behavior: "instant" }), scrollY);
+  await page.waitForTimeout(900);
+
+  return {
+    name: visualState.name,
+    selector: visualState.selector,
+    scrollY,
+    description: visualState.description
+  };
+}
+
+async function detectStickyOverlaps(page: Page, state: ScreenshotState): Promise<StickyOverlapIssue[]> {
+  await page.evaluate(() => {
+    const globalWithName = globalThis as typeof globalThis & { __name?: <T>(target: T) => T };
+    globalWithName.__name ??= (target) => target;
+  });
+
+  return page.evaluate((stateConfig) => {
+    type Rect = ElementRect;
+    type Issue = StickyOverlapIssue;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const viewportArea = viewportWidth * viewportHeight;
+
+    const toRect = (rect: DOMRect): Rect => ({
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      top: Math.round(rect.top),
+      right: Math.round(rect.right),
+      bottom: Math.round(rect.bottom),
+      left: Math.round(rect.left)
+    });
+    const visible = (rect: DOMRect): boolean =>
+      rect.width >= 8 &&
+      rect.height >= 8 &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < viewportHeight &&
+      rect.left < viewportWidth;
+    const clipToViewport = (rect: DOMRect): Rect => {
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const right = Math.min(viewportWidth, rect.right);
+      const bottom = Math.min(viewportHeight, rect.bottom);
+      return {
+        x: Math.round(left),
+        y: Math.round(top),
+        width: Math.max(0, Math.round(right - left)),
+        height: Math.max(0, Math.round(bottom - top)),
+        top: Math.round(top),
+        right: Math.round(right),
+        bottom: Math.round(bottom),
+        left: Math.round(left)
+      };
+    };
+    const intersection = (a: Rect, b: Rect): Rect | undefined => {
+      const left = Math.max(a.left, b.left);
+      const top = Math.max(a.top, b.top);
+      const right = Math.min(a.right, b.right);
+      const bottom = Math.min(a.bottom, b.bottom);
+      if (right <= left || bottom <= top) return undefined;
+      return {
+        x: Math.round(left),
+        y: Math.round(top),
+        width: Math.round(right - left),
+        height: Math.round(bottom - top),
+        top: Math.round(top),
+        right: Math.round(right),
+        bottom: Math.round(bottom),
+        left: Math.round(left)
+      };
+    };
+    const selectorFor = (element: Element): string => {
+      if (element.id) return `#${CSS.escape(element.id)}`;
+      const attr = element.getAttribute("aria-label") || element.getAttribute("data-section") || element.getAttribute("href");
+      const tag = element.tagName.toLowerCase();
+      if (attr) return `${tag}[${attr.slice(0, 36)}]`;
+      const parent = element.parentElement;
+      if (!parent) return tag;
+      const index = Array.from(parent.children).indexOf(element) + 1;
+      return `${selectorFor(parent)} > ${tag}:nth-child(${index})`;
+    };
+    const ownText = (element: Element): string => (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+    const hasPositionedAncestor = (element: Element): boolean => {
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        const position = window.getComputedStyle(parent).position;
+        if (position === "fixed" || position === "sticky") return true;
+      }
+      return false;
+    };
+    const hasVisibleText = (element: Element): boolean => ownText(element).length >= 2;
+    const isContainerCandidate = (element: Element, style: CSSStyleDeclaration): boolean => {
+      const tag = element.tagName.toLowerCase();
+      const hasFrame =
+        style.borderTopWidth !== "0px" ||
+        style.borderRightWidth !== "0px" ||
+        style.borderBottomWidth !== "0px" ||
+        style.borderLeftWidth !== "0px" ||
+        style.boxShadow !== "none" ||
+        (style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent");
+      return ["article", "section", "main", "aside", "div", "li"].includes(tag) && hasFrame && hasVisibleText(element);
+    };
+
+    const fixedElements = Array.from(document.querySelectorAll("body *"))
+      .map((element) => ({ element, style: window.getComputedStyle(element), rect: element.getBoundingClientRect() }))
+      .filter(({ element, style, rect }) => {
+        const position = style.position;
+        const area = rect.width * rect.height;
+        if (position !== "fixed" && position !== "sticky") return false;
+        if (!visible(rect)) return false;
+        if (style.display === "none" || style.visibility === "hidden" || Number.parseFloat(style.opacity || "1") < 0.05) return false;
+        if (area > viewportArea * 0.75 && !hasVisibleText(element)) return false;
+        const tag = element.tagName.toLowerCase();
+        const label = `${element.getAttribute("aria-label") ?? ""} ${ownText(element)}`.toLowerCase();
+        const looksLikeSectionNav =
+          tag === "nav" &&
+          (label.includes("раздел") ||
+            (label.includes("зачем") && label.includes("спикер") && label.includes("маршрут")) ||
+            (label.includes("тариф") && label.includes("отзыв") && label.includes("faq")));
+        const sitsOnSide =
+          rect.height >= viewportHeight * 0.22 &&
+          rect.width <= viewportWidth * 0.42 &&
+          (rect.left >= viewportWidth * 0.42 || rect.right <= viewportWidth * 0.58);
+        return looksLikeSectionNav && sitsOnSide;
+      });
+
+    const contentRoot = stateConfig.selector ? document.querySelector(stateConfig.selector) : document.querySelector("main");
+    const contentScope = contentRoot ?? document.body;
+    const contentElements = [contentScope, ...Array.from(contentScope.querySelectorAll("article, div, h1, h2, h3, p, li, a, button, [role='button']"))]
+      .map((element) => ({ element, style: window.getComputedStyle(element), rect: element.getBoundingClientRect() }))
+      .filter(({ element, style, rect }) => {
+        const area = rect.width * rect.height;
+        if (!visible(rect)) return false;
+        if (style.display === "none" || style.visibility === "hidden" || Number.parseFloat(style.opacity || "1") < 0.05) return false;
+        if (hasPositionedAncestor(element)) return false;
+        if (area > viewportArea * 0.68) return false;
+        if (["script", "style", "svg", "canvas"].includes(element.tagName.toLowerCase())) return false;
+        return hasVisibleText(element) || isContainerCandidate(element, style);
+      });
+
+    const issues: Issue[] = [];
+    const seen = new Set<string>();
+
+    for (const fixed of fixedElements) {
+      const fixedRect = clipToViewport(fixed.rect);
+      for (const content of contentElements) {
+        if (fixed.element === content.element || fixed.element.contains(content.element) || content.element.contains(fixed.element)) continue;
+        const contentRect = clipToViewport(content.rect);
+        const overlap = intersection(fixedRect, contentRect);
+        const keyBase = `${selectorFor(fixed.element)}::${selectorFor(content.element)}`;
+
+        if (overlap) {
+          const overlapArea = overlap.width * overlap.height;
+          const smallerArea = Math.max(1, Math.min(fixedRect.width * fixedRect.height, contentRect.width * contentRect.height));
+          if (overlapArea >= 120 && overlapArea / smallerArea >= 0.015) {
+            const key = `overlap::${keyBase}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              issues.push({
+                kind: "overlap",
+                stateName: stateConfig.name,
+                scrollY: Math.round(window.scrollY),
+                fixedSelector: selectorFor(fixed.element),
+                fixedPosition: fixed.style.position as "fixed" | "sticky",
+                fixedText: ownText(fixed.element),
+                fixedRect,
+                contentSelector: selectorFor(content.element),
+                contentText: ownText(content.element),
+                contentRect,
+                intersection: overlap,
+                intersectionArea: overlapArea
+              });
+            }
+          }
+        } else {
+          const horizontalGap = Math.max(contentRect.left - fixedRect.right, fixedRect.left - contentRect.right, 0);
+          const verticalOverlap = Math.max(0, Math.min(fixedRect.bottom, contentRect.bottom) - Math.max(fixedRect.top, contentRect.top));
+          const meaningfulVerticalOverlap = verticalOverlap >= Math.min(72, Math.max(20, Math.min(fixedRect.height, contentRect.height) * 0.35));
+          const fixedIsSidebar = fixedRect.height >= viewportHeight * 0.22 || fixedRect.width >= 120;
+          if (fixedIsSidebar && meaningfulVerticalOverlap && horizontalGap <= 24) {
+            const key = `near::${keyBase}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              issues.push({
+                kind: "near-overlap",
+                stateName: stateConfig.name,
+                scrollY: Math.round(window.scrollY),
+                fixedSelector: selectorFor(fixed.element),
+                fixedPosition: fixed.style.position as "fixed" | "sticky",
+                fixedText: ownText(fixed.element),
+                fixedRect,
+                contentSelector: selectorFor(content.element),
+                contentText: ownText(content.element),
+                contentRect,
+                horizontalGap,
+                verticalOverlap
+              });
+            }
+          }
+        }
+
+        if (issues.length >= 12) return issues;
+      }
+    }
+
+    return issues;
+  }, { name: state.name, selector: state.selector });
+}
+
+function safeStateName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "state";
+}
+
 export async function captureFocusedScreenshot(
   site: SiteConfig,
   url: string,
@@ -146,7 +526,7 @@ export async function captureFocusedScreenshot(
     scrollY: number;
   }
 ): Promise<ScreenshotArtifact> {
-  const siteDir = path.join(options.outputDir, site.id, options.viewport.name);
+  const siteDir = path.join(options.outputDir, site.id, "chromium", options.viewport.name);
   await mkdir(siteDir, { recursive: true });
   const filePath = path.join(siteDir, `${safeFilenameFromUrl(url)}.${options.fileSuffix}.png`);
   const browser = await chromium.launch({ headless: true });
@@ -178,6 +558,12 @@ export async function captureFocusedScreenshot(
       return {
         siteId: site.id,
         url,
+        browserEngine: "chromium",
+        captureKind: "focused",
+        state: {
+          name: options.fileSuffix,
+          scrollY: options.scrollY
+        },
         viewport: options.viewport,
         filePath,
         status: "captured",
@@ -194,6 +580,12 @@ export async function captureFocusedScreenshot(
     return {
       siteId: site.id,
       url,
+      browserEngine: "chromium",
+      captureKind: "focused",
+      state: {
+        name: options.fileSuffix,
+        scrollY: options.scrollY
+      },
       viewport: options.viewport,
       filePath,
       status: "failed",
