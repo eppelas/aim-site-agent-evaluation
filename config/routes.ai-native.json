@@ -1,0 +1,18 @@
+{
+  "site": "ai-native",
+  "baseUrl": "https://ai-native.aimindset.org/",
+  "discovery": {
+    "strategy": ["seed", "crawl"],
+    "sitemap": null
+  },
+  "seedPaths": [
+    "/"
+  ],
+  "knownFindings": [
+    {
+      "path": "/",
+      "finding": "Manual visual QA should check 13-inch navigation overlap in the route/stages section.",
+      "expectedResolution": "Capture and review the 1280x800/laptop-13 state where right-side navigation may overlap route/stage text."
+    }
+  ]
+}

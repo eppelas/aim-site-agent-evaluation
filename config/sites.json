@@ -17,6 +17,15 @@
       "sitemapUrl": null,
       "robotsUrl": "https://staging.aimindset.org/robots.txt",
       "timezone": "Europe/Lisbon"
+    },
+    {
+      "id": "ai-native",
+      "name": "AI Native Organizations Sprint",
+      "baseUrl": "https://ai-native.aimindset.org/",
+      "role": "campaign-sprint-site",
+      "sitemapUrl": null,
+      "robotsUrl": "https://ai-native.aimindset.org/robots.txt",
+      "timezone": "Europe/Lisbon"
     }
   ],
   "artifactStorage": {

@@ -37,7 +37,11 @@ export function selectViewports(matrix: BrowserMatrixConfig, names: string[]): V
   const aliases: Record<string, string> = {
     mobile: "iphone-modern",
     tablet: "ipad-classic",
+    "tablet-landscape-classic": "tablet-landscape-classic",
+    "13-inch": "laptop-13",
+    "laptop-13": "laptop-13",
     desktop: "small-laptop",
+    wide: "macbook",
     hd: "desktop-hd"
   };
 

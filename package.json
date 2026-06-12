@@ -9,6 +9,7 @@
     "qa:v0": "tsx src/cli/run.ts --site all --screenshots --screenshot-viewports mobile,desktop --screenshot-limit 12",
     "qa:biweekly": "tsx src/cli/run.ts --site all --screenshots --screenshot-viewports mobile,desktop --screenshot-limit 12 --max-crawl-pages 80",
     "qa:monthly": "tsx src/cli/run.ts --site all --screenshots --screenshot-viewports mobile,tablet,desktop,hd --screenshot-limit 0 --max-crawl-pages 120",
+    "qa:ai-native": "tsx src/cli/run.ts --site ai-native --screenshots --screenshot-viewports mobile,mobile-large,tablet,tablet-landscape-classic,13-inch,desktop,wide --screenshot-limit 0 --max-crawl-pages 40",
     "dashboard": "tsx src/dashboard/generate.ts",
     "sync:history": "tsx src/cli/sync-history-storage.ts",
     "cms:contract": "node --import tsx src/cli/check-cms-contract.ts",

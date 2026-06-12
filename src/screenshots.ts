@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { chromium, type Page } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import type { DiscoveredRoute, ScreenshotArtifact, ScreenshotImageAnalysis, SiteConfig, ViewportConfig, VisualDiffResult } from "./types.js";
@@ -33,70 +33,24 @@ export async function captureScreenshots(
 
   try {
     for (const viewport of options.viewports) {
-      const context = await browser.newContext({
-        viewport: { width: viewport.width, height: viewport.height },
-        deviceScaleFactor: 1,
-        reducedMotion: "reduce"
-      });
+      const context = await newScreenshotContext(browser, viewport);
 
       for (const route of selectedRoutes) {
-        const siteDir = path.join(options.outputDir, site.id, viewport.name);
-        await mkdir(siteDir, { recursive: true });
-        const filePath = path.join(siteDir, `${safeFilenameFromUrl(route.url)}.png`);
-        const page = await context.newPage();
-        page.setDefaultNavigationTimeout(30000);
-        page.setDefaultTimeout(20000);
-
-        try {
-          await page.goto(route.url, { waitUntil: "domcontentloaded", timeout: 30000 });
-          await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
-          await page.screenshot({ path: filePath, fullPage: true, animations: "disabled", timeout: 20000 });
-          const metadata = await fileMetadata(filePath);
-          const blankRegionRetry = metadata.image?.largestBlankRegion
-            ? await recaptureAfterScrollSettle(page, filePath, viewport)
-            : undefined;
-          const baselinePath = options.baselineDir
-            ? path.join(options.baselineDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.png`)
-            : undefined;
-          const diffPath = options.diffDir
-            ? path.join(options.diffDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.diff.png`)
-            : undefined;
-          const comparison = baselinePath
-            ? await compareOrCreateBaseline(filePath, baselinePath, metadata.sha256, diffPath)
-            : { baselineStatus: "not-checked" as const };
-          artifacts.push({
-            siteId: site.id,
-            url: route.url,
-            viewport,
-            filePath,
-            baselinePath,
-            diffPath: comparison.diffPath,
-            status: "captured",
-            baselineStatus: comparison.baselineStatus,
-            byteSize: metadata.byteSize,
-            sha256: metadata.sha256,
-            image: metadata.image,
-            blankRegionRetry,
-            visualDiff: comparison.visualDiff
-          });
-        } catch (error) {
-          artifacts.push({
-            siteId: site.id,
-            url: route.url,
-            viewport,
-            filePath,
-            baselinePath: options.baselineDir
-              ? path.join(options.baselineDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.png`)
-              : undefined,
-            diffPath: options.diffDir
-              ? path.join(options.diffDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.diff.png`)
-              : undefined,
-            status: "failed",
-            baselineStatus: "missing",
-            error: error instanceof Error ? error.message : String(error)
-          });
-        } finally {
-          await page.close().catch(() => undefined);
+        const artifact = await captureScreenshotArtifact(context, site, route, viewport, options);
+        if (artifact.status === "captured") {
+          artifacts.push(artifact);
+        } else {
+          const retryContext = await newScreenshotContext(browser, viewport);
+          const retryArtifact = await captureScreenshotArtifact(retryContext, site, route, viewport, options);
+          await retryContext.close().catch(() => undefined);
+          artifacts.push(
+            retryArtifact.status === "captured"
+              ? retryArtifact
+              : {
+                  ...retryArtifact,
+                  error: `${artifact.error ?? "First capture failed."}\nRetry failed: ${retryArtifact.error ?? "Unknown retry error."}`
+                }
+          );
         }
       }
 
@@ -107,6 +61,164 @@ export async function captureScreenshots(
   }
 
   return artifacts;
+}
+
+async function newScreenshotContext(browser: Browser, viewport: ViewportConfig): Promise<BrowserContext> {
+  return browser.newContext({
+    viewport: { width: viewport.width, height: viewport.height },
+    deviceScaleFactor: 1,
+    reducedMotion: "reduce"
+  });
+}
+
+async function captureScreenshotArtifact(
+  context: BrowserContext,
+  site: SiteConfig,
+  route: DiscoveredRoute,
+  viewport: ViewportConfig,
+  options: ScreenshotOptions
+): Promise<ScreenshotArtifact> {
+  const siteDir = path.join(options.outputDir, site.id, viewport.name);
+  await mkdir(siteDir, { recursive: true });
+  const filePath = path.join(siteDir, `${safeFilenameFromUrl(route.url)}.png`);
+  const baselinePath = options.baselineDir
+    ? path.join(options.baselineDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.png`)
+    : undefined;
+  const diffPath = options.diffDir
+    ? path.join(options.diffDir, site.id, viewport.name, `${safeFilenameFromUrl(route.url)}.diff.png`)
+    : undefined;
+  const page = await context.newPage();
+  page.setDefaultNavigationTimeout(30000);
+  page.setDefaultTimeout(20000);
+
+  try {
+    await gotoForScreenshot(page, route.url);
+    await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => undefined);
+    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
+    await page.waitForTimeout(1000);
+    await captureFullPageScreenshot(page, filePath);
+    const metadata = await fileMetadata(filePath);
+    const blankRegionRetry = metadata.image?.largestBlankRegion
+      ? await recaptureAfterScrollSettle(page, filePath, viewport)
+      : undefined;
+    const comparison = baselinePath
+      ? await compareOrCreateBaseline(filePath, baselinePath, metadata.sha256, diffPath)
+      : { baselineStatus: "not-checked" as const };
+    return {
+      siteId: site.id,
+      url: route.url,
+      viewport,
+      filePath,
+      baselinePath,
+      diffPath: comparison.diffPath,
+      status: "captured",
+      baselineStatus: comparison.baselineStatus,
+      byteSize: metadata.byteSize,
+      sha256: metadata.sha256,
+      image: metadata.image,
+      blankRegionRetry,
+      visualDiff: comparison.visualDiff
+    };
+  } catch (error) {
+    return {
+      siteId: site.id,
+      url: route.url,
+      viewport,
+      filePath,
+      baselinePath,
+      diffPath,
+      status: "failed",
+      baselineStatus: "missing",
+      error: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
+
+export async function captureFocusedScreenshot(
+  site: SiteConfig,
+  url: string,
+  options: {
+    outputDir: string;
+    viewport: ViewportConfig;
+    fileSuffix: string;
+    scrollY: number;
+  }
+): Promise<ScreenshotArtifact> {
+  const siteDir = path.join(options.outputDir, site.id, options.viewport.name);
+  await mkdir(siteDir, { recursive: true });
+  const filePath = path.join(siteDir, `${safeFilenameFromUrl(url)}.${options.fileSuffix}.png`);
+  const browser = await chromium.launch({ headless: true });
+
+  try {
+    const context = await browser.newContext({
+      viewport: { width: options.viewport.width, height: options.viewport.height },
+      deviceScaleFactor: 1,
+      reducedMotion: "reduce"
+    });
+    const page = await context.newPage();
+    page.setDefaultNavigationTimeout(30000);
+    page.setDefaultTimeout(20000);
+
+    try {
+      await page.goto(url, { waitUntil: "commit", timeout: 30000 });
+      await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => undefined);
+      await page.waitForTimeout(2500);
+      await page.evaluate((scrollY) => window.scrollTo({ top: scrollY, left: 0, behavior: "instant" }), options.scrollY);
+      await page.waitForTimeout(1200);
+      const client = await page.context().newCDPSession(page);
+      const screenshot = await client.send("Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+        captureBeyondViewport: false
+      });
+      await writeFile(filePath, Buffer.from(screenshot.data, "base64"));
+      const metadata = await fileMetadata(filePath);
+      return {
+        siteId: site.id,
+        url,
+        viewport: options.viewport,
+        filePath,
+        status: "captured",
+        baselineStatus: "not-checked",
+        byteSize: metadata.byteSize,
+        sha256: metadata.sha256,
+        image: metadata.image
+      };
+    } finally {
+      await page.close().catch(() => undefined);
+      await context.close().catch(() => undefined);
+    }
+  } catch (error) {
+    return {
+      siteId: site.id,
+      url,
+      viewport: options.viewport,
+      filePath,
+      status: "failed",
+      baselineStatus: "not-checked",
+      error: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
+async function gotoForScreenshot(page: Page, url: string): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: "commit", timeout: 45000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.goto("about:blank", { waitUntil: "commit", timeout: 5000 }).catch(() => undefined);
+      await page.waitForTimeout(1500 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function compareOrCreateBaseline(
@@ -155,7 +267,7 @@ async function recaptureAfterScrollSettle(
   const retryPath = path.join(parsed.dir, `${parsed.name}.scroll-settle${parsed.ext}`);
   try {
     await settlePageForScreenshot(page, viewport);
-    await page.screenshot({ path: retryPath, fullPage: true, animations: "disabled", timeout: 20000 });
+    await captureFullPageScreenshot(page, retryPath);
     const metadata = await fileMetadata(retryPath);
     return {
       strategy: "scroll-settle-recapture",
@@ -242,6 +354,38 @@ function analyzePng(bytes: Buffer): ScreenshotImageAnalysis | undefined {
   } catch {
     return undefined;
   }
+}
+
+async function captureFullPageScreenshot(page: Page, filePath: string): Promise<void> {
+  try {
+    await page.screenshot({ path: filePath, fullPage: true, animations: "disabled", timeout: 20000 });
+  } catch (primaryError) {
+    try {
+      await captureFullPageScreenshotViaCdp(page, filePath);
+    } catch (fallbackError) {
+      const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(`${primaryMessage}\nCDP screenshot fallback failed: ${fallbackMessage}`);
+    }
+  }
+}
+
+async function captureFullPageScreenshotViaCdp(page: Page, filePath: string): Promise<void> {
+  await page.addStyleTag({
+    content: `*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important;caret-color:transparent!important;}`
+  }).catch(() => undefined);
+  const client = await page.context().newCDPSession(page);
+  const metrics = await client.send("Page.getLayoutMetrics");
+  const viewport = page.viewportSize();
+  const width = Math.ceil(Math.max(metrics.contentSize.width, viewport?.width ?? 0, 1));
+  const height = Math.ceil(Math.max(metrics.contentSize.height, viewport?.height ?? 0, 1));
+  const screenshot = await client.send("Page.captureScreenshot", {
+    format: "png",
+    fromSurface: true,
+    captureBeyondViewport: true,
+    clip: { x: 0, y: 0, width, height, scale: 1 }
+  });
+  await writeFile(filePath, Buffer.from(screenshot.data, "base64"));
 }
 
 async function settlePageForScreenshot(page: Page, viewport: ViewportConfig): Promise<void> {

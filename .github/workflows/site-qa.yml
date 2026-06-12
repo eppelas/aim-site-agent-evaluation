@@ -25,6 +25,7 @@ on:
           - biweekly
           - monthly
           - health
+          - ai-native
   schedule:
     # Biweekly candidate run. GitHub cron has no native every-two-weeks syntax,
     # so the job below skips odd ISO weeks.
@@ -121,6 +122,10 @@ jobs:
         if: steps.mode.outputs.skip != 'true' && steps.mode.outputs.mode == 'monthly'
         run: npm run qa:monthly
 
+      - name: Run AI Native visual QA
+        if: steps.mode.outputs.skip != 'true' && steps.mode.outputs.mode == 'ai-native'
+        run: npm run qa:ai-native
+
       - name: Generate dashboard
         if: steps.mode.outputs.skip != 'true' && always()
         run: npm run dashboard
@@ -199,6 +204,7 @@ jobs:
             <p><a href="reports/latest/dashboard.html">Open AI Mindset QA Dashboards</a></p>
             <p><a href="reports/latest/dashboard.production.html">Production dashboard</a></p>
             <p><a href="reports/latest/dashboard.staging.html">Staging dashboard</a></p>
+            <p><a href="reports/latest/dashboard.ai-native.html">AI Native dashboard</a></p>
           </body>
           </html>
           HTML

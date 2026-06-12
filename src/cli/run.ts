@@ -2,7 +2,7 @@ import path from "node:path";
 import { loadBrowserMatrix, loadCtaRules, loadMigrationMap, loadRoutesConfig, loadSites, selectViewports } from "../config.js";
 import { discoverRoutes } from "../discovery.js";
 import { checkPage, checkSurfaceFiles, findingsFromPageChecks } from "../checks.js";
-import { captureScreenshots } from "../screenshots.js";
+import { captureFocusedScreenshot, captureScreenshots } from "../screenshots.js";
 import { collectLinkIntents, linkIntentFindings } from "../link-intents.js";
 import { ctaAssertionFindings } from "../cta-assertions.js";
 import { checkExternalTargets, externalTargetFindings } from "../external-targets.js";
@@ -59,6 +59,18 @@ async function main(): Promise<void> {
         diffDir: path.join(artifactRunDir, "diffs")
       });
       allScreenshots.push(...screenshotArtifacts);
+
+      const rootRoute = routes.find((route) => new URL(route.url).pathname === "/");
+      if (site.id === "ai-native" && rootRoute) {
+        allScreenshots.push(
+          await captureFocusedScreenshot(site, rootRoute.url, {
+            outputDir: path.join(artifactRunDir, "screenshots"),
+            viewport: { name: "laptop-13-route-focus", width: 1280, height: 800 },
+            fileSuffix: "route-overlap",
+            scrollY: 3200
+          })
+        );
+      }
     }
   }
 
@@ -206,6 +218,40 @@ async function main(): Promise<void> {
     }
   }
 
+  for (const screenshot of allScreenshots.filter((artifact) => artifact.siteId === "ai-native" && artifact.viewport.name === "laptop-13-route-focus")) {
+    findings.push({
+      id: `finding_${String(findings.length + 1).padStart(3, "0")}`,
+      siteId: screenshot.siteId,
+      url: screenshot.url,
+      checkType: "screenshot",
+      severity: screenshot.status === "captured" ? "medium" : "high",
+      status: screenshot.status === "captured" ? "needs-review" : "failed",
+      title: "13-inch route section needs manual overlap review",
+      description: "Focused 1280x800 route/stage capture for the AI Native page should be reviewed for sticky navigation overlap or too-tight spacing around stage text.",
+      expected: "The route/stage card text and sticky navigation should remain clearly separated on 13-inch laptop layouts.",
+      actual: screenshot.status === "captured"
+        ? "Focused screenshot captured at scrollY=3200. Prior manual evidence showed the right-side menu sticking into the route/stage text area; current automated evidence should be reviewed as a suspicious responsive breakpoint."
+        : screenshot.error,
+      remediation: {
+        owner: "design",
+        summary: "Review the 13-inch route/stage layout and add a responsive breakpoint or hide/reposition sticky section navigation before it collides with content.",
+        steps: [
+          "Open the focused screenshot artifact and the full laptop-13 screenshot.",
+          "Open the live page at 1280x800 and scroll to the route/stages section.",
+          "If the side navigation overlaps or crowds the stage card, adjust the route layout width, card transform, or section navigation breakpoint.",
+          "Rerun `npm run qa:ai-native && npm run dashboard` and compare the focused evidence."
+        ]
+      },
+      evidence: {
+        viewport: screenshot.viewport,
+        filePath: screenshot.filePath,
+        image: screenshot.image,
+        sha256: screenshot.sha256,
+        manualContext: "User-reported screenshot showed the menu sticking into text around stage 05 / обновить бэклог роста."
+      }
+    });
+  }
+
   const finishedAt = new Date();
   const summary = buildSummary(findings);
   summary.routesDiscovered = allRoutes.length;
@@ -254,7 +300,7 @@ function parseArgs(args: string[]): CliOptions {
     const next = args[index + 1];
 
     if (arg === "--site" && next) {
-      if (next !== "all" && next !== "production" && next !== "staging") {
+      if (next !== "all" && next !== "production" && next !== "staging" && next !== "ai-native") {
         throw new Error(`Invalid --site value: ${next}`);
       }
       options.site = next;
@@ -280,6 +326,7 @@ function parseArgs(args: string[]): CliOptions {
 
 function modeForSites(sites: SiteConfig[], selected: "all" | SiteId): RunMode {
   if (selected === "all") return "all-sites";
+  if (sites[0]?.id === "ai-native") return "ai-native-visual-qa";
   return sites[0]?.id === "production" ? "production-regression" : "staging-regression";
 }
 

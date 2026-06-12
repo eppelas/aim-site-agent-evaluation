@@ -1,11 +1,12 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import type { Finding, LinkReference, RunReport, ScreenshotArtifact, SiteId } from "../types.js";
+import type { Finding, LinkReference, RunReport, ScreenshotArtifact, SiteConfig, SiteId } from "../types.js";
 
 const latestReportPath = path.join(process.cwd(), "reports", "latest", "report.json");
 const latestOutputDir = path.join(process.cwd(), "reports", "latest");
 const historyRootDir = path.join(process.cwd(), "reports", "history");
+const sitesConfigPath = path.join(process.cwd(), "config", "sites.json");
 const historyStorageConfigPath = path.join(process.cwd(), "config", "history-storage.json");
 let renderOutputDir = latestOutputDir;
 
@@ -24,21 +25,26 @@ async function main(): Promise<void> {
 async function writeDashboardSet(report: RunReport, targetOutputDir: string): Promise<void> {
   renderOutputDir = targetOutputDir;
   await mkdir(targetOutputDir, { recursive: true });
-  await writeFile(path.join(targetOutputDir, "dashboard.html"), renderDashboardIndex(report), "utf8");
-  for (const siteId of report.sites) {
+  const dashboardSiteIds = await siteIdsForDashboardSet(report, targetOutputDir);
+  await writeFile(path.join(targetOutputDir, "dashboard.html"), renderDashboardIndex(report, dashboardSiteIds), "utf8");
+  for (const siteId of dashboardSiteIds) {
     await writeFile(path.join(targetOutputDir, `dashboard.${siteId}.html`), renderDashboard(report, siteId), "utf8");
   }
 }
 
-function renderDashboardIndex(report: RunReport): string {
+function renderDashboardIndex(report: RunReport, dashboardSiteIds: SiteId[]): string {
   const runDate = new Date(report.startedAt);
-  const siteCards = report.sites
+  const siteCards = dashboardSiteIds
     .map((siteId) => {
+      const checkedInRun = report.sites.includes(siteId);
       const siteReport = scopeReport(report, siteId);
-      return `<a class="site-card" href="dashboard.${escapeAttribute(siteId)}.html">
+      const summaryText = checkedInRun
+        ? `${siteReport.summary.findingsTotal} findings / ${siteReport.summary.high} high`
+        : "not checked in this run";
+      return `<a class="site-card ${checkedInRun ? "" : "not-run"}" href="dashboard.${escapeAttribute(siteId)}.html">
         <span class="eyebrow">${escapeHtml(siteId)}</span>
         <strong>${escapeHtml(siteTitle(siteId))}</strong>
-        <span>${siteReport.summary.findingsTotal} findings / ${siteReport.summary.high} high</span>
+        <span>${escapeHtml(summaryText)}</span>
       </a>`;
     })
     .join("");
@@ -90,7 +96,7 @@ function renderDashboardIndex(report: RunReport): string {
       </div>
       <div class="calendar">
         ${calendarCard("Last run", runDate, statusForReport(report), `${report.summary.findingsTotal} findings`, "run-status")}
-        ${calendarCard("Next biweekly", nextIsoWeekday(runDate, 1, 14), "planned", "Production + staging smoke")}
+        ${calendarCard("Next biweekly", nextIsoWeekday(runDate, 1, 14), "planned", "Production + staging + AI Native smoke")}
         ${calendarCard("Next monthly", new Date(Date.UTC(runDate.getUTCFullYear(), runDate.getUTCMonth() + 1, 1, 8, 0, 0)), "planned", "Expanded viewports and screenshots")}
       </div>
     </section>
@@ -103,6 +109,7 @@ function renderDashboardIndex(report: RunReport): string {
 
 function renderDashboard(report: RunReport, siteId: SiteId): string {
   const scopedReport = scopeReport(report, siteId);
+  const checkedInRun = report.sites.includes(siteId);
   const runDate = new Date(report.startedAt);
   const nextBiweekly = nextIsoWeekday(runDate, 1, 14);
   const nextMonthly = new Date(Date.UTC(runDate.getUTCFullYear(), runDate.getUTCMonth() + 1, 1, 8, 0, 0));
@@ -152,7 +159,7 @@ function renderDashboard(report: RunReport, siteId: SiteId): string {
       </div>
     </section>
 
-    ${renderRunStatusPanel(scopedReport, siteId)}
+    ${checkedInRun ? renderRunStatusPanel(scopedReport, siteId) : renderSiteNotCheckedPanel(report, siteId)}
 
     <section class="panel">
       <div class="section-head">
@@ -255,6 +262,26 @@ function renderDashboard(report: RunReport, siteId: SiteId): string {
 </body>
 </html>
 `;
+}
+
+function renderSiteNotCheckedPanel(report: RunReport, siteId: SiteId): string {
+  const checkedSites = report.sites.length > 0 ? report.sites.join(", ") : "none";
+  return `<section class="panel run-status" id="run-status">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Run Status</p>
+        <h2>${escapeHtml(siteTitle(siteId))} Was Not Checked In This Run</h2>
+      </div>
+      <span class="pill warning">not checked</span>
+    </div>
+    <div class="rerun-box">
+      <p>The latest run <code>${escapeHtml(report.runId)}</code> checked ${escapeHtml(checkedSites)} only. This dashboard shell is kept visible so single-site runs do not hide the production or staging workspaces.</p>
+      <p>Local rerun command:</p>
+      <pre><code>${escapeHtml(`npm run qa -- --site ${siteId} --max-crawl-pages 80 && npm run dashboard`)}</code></pre>
+      <p>GitHub Actions rerun after this repo is pushed and GitHub CLI is authenticated:</p>
+      <pre><code>${escapeHtml("gh workflow run site-qa.yml -f mode=health")}</code></pre>
+    </div>
+  </section>`;
 }
 
 function renderHistoryPreview(): string {
@@ -781,11 +808,11 @@ async function buildStorageManifest(reports: RunReport[], scope: "latest-run" | 
   };
 
   if (scope === "latest-run") {
+    const latestDashboardSites = await siteIdsForDashboardSet(reports[0], latestOutputDir);
     add("reports/latest/report.json", "report-json", reports[0]?.runId);
     add("reports/latest/summary.md", "report-summary", reports[0]?.runId);
     add("reports/latest/dashboard.html", "report-dashboard", reports[0]?.runId);
-    add("reports/latest/dashboard.production.html", "report-dashboard", reports[0]?.runId);
-    add("reports/latest/dashboard.staging.html", "report-dashboard", reports[0]?.runId);
+    for (const siteId of latestDashboardSites) add(`reports/latest/dashboard.${siteId}.html`, "report-dashboard", reports[0]?.runId);
     add("reports/history/index.html", "history-index");
     add("reports/history/index.json", "history-index-json");
   }
@@ -942,6 +969,35 @@ function normalizeRelativePath(input: string): string {
   return toPosix(path.normalize(relativePath)).replace(/^\.\//, "");
 }
 
+async function siteIdsForDashboardSet(report: RunReport | undefined, targetOutputDir: string): Promise<SiteId[]> {
+  if (!report) return [];
+  if (!isLatestOutputDir(targetOutputDir)) return report.sites;
+
+  const configuredSiteIds = await readConfiguredSiteIds();
+  return uniqueSiteIds([...configuredSiteIds, ...report.sites]);
+}
+
+async function readConfiguredSiteIds(): Promise<SiteId[]> {
+  try {
+    const parsed = JSON.parse(await readFile(sitesConfigPath, "utf8")) as { sites?: Array<Partial<SiteConfig>> };
+    return uniqueSiteIds((parsed.sites ?? []).map((site) => site.id).filter((siteId): siteId is SiteId => isSiteId(siteId)));
+  } catch {
+    return [];
+  }
+}
+
+function uniqueSiteIds(siteIds: SiteId[]): SiteId[] {
+  return [...new Set(siteIds)];
+}
+
+function isSiteId(input: unknown): input is SiteId {
+  return input === "production" || input === "staging" || input === "ai-native";
+}
+
+function isLatestOutputDir(outputDir: string): boolean {
+  return path.resolve(outputDir) === path.resolve(latestOutputDir);
+}
+
 function scopeReport(report: RunReport, siteId: SiteId): RunReport {
   const findings = report.findings.filter((finding) => finding.siteId === siteId);
   const checks = report.checks.filter((check) => check.siteId === siteId);
@@ -963,7 +1019,7 @@ function scopeReport(report: RunReport, siteId: SiteId): RunReport {
 
   return {
     ...report,
-    mode: siteId === "production" ? "production-regression" : "staging-regression",
+    mode: siteId === "production" ? "production-regression" : siteId === "ai-native" ? "ai-native-visual-qa" : "staging-regression",
     sites: [siteId],
     summary,
     checks,
@@ -1023,7 +1079,9 @@ function sourceRank(sourceType: LinkReference["sourceType"]): number {
 }
 
 function siteTitle(siteId: SiteId): string {
-  return siteId === "production" ? "aimindset.org" : "staging.aimindset.org";
+  if (siteId === "production") return "aimindset.org";
+  if (siteId === "ai-native") return "ai-native.aimindset.org";
+  return "staging.aimindset.org";
 }
 
 function siteHost(siteId: SiteId): string {
@@ -1289,6 +1347,10 @@ function css(): string {
       border-radius: 8px;
       color: inherit;
       text-decoration: none;
+    }
+    .site-card.not-run {
+      background: #fbfaf5;
+      border-style: dashed;
     }
     .site-card strong { font-size: 28px; line-height: 1.05; }
     .site-card span:last-child { color: var(--muted); font-size: 13px; }

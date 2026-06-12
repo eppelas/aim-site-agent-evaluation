@@ -1,8 +1,9 @@
-export type SiteId = "production" | "staging";
+export type SiteId = "production" | "staging" | "ai-native";
 
 export type RunMode =
   | "production-regression"
   | "staging-regression"
+  | "ai-native-visual-qa"
   | "all-sites"
   | "migration-compare"
   | "agent-readability";
