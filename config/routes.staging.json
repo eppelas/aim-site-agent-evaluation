@@ -2,7 +2,10 @@
   "site": "staging",
   "baseUrl": "https://staging.aimindset.org/",
   "discovery": {
-    "strategy": ["seed", "crawl"],
+    "strategy": [
+      "seed",
+      "crawl"
+    ],
     "sitemap": null
   },
   "seedPaths": [
@@ -11,14 +14,7 @@
     "/for-teams/",
     "/non-profit/",
     "/research/",
-    "/garden/",
-    "/labs/s26-summer-lab/",
-    "/labs/summer-main-lab/",
-    "/labs/health-sprint/",
-    "/labs/spring-main-lab/",
-    "/labs/s26-spring-lab/",
-    "/labs/test-w26-main-lab/",
-    "/labs/w26-main-lab/"
+    "/garden/"
   ],
   "knownFindings": [
     {
@@ -45,6 +41,41 @@
       "path": "/labs/w26",
       "finding": "Old lab route missing on staging.",
       "expectedResolution": "Map, redirect, or mark retired."
+    },
+    {
+      "path": "/labs/s26-summer-lab/",
+      "finding": "Unpublished/temporarily disabled lab page (owner-confirmed 2026-07-07, expected 404 while unpublished).",
+      "expectedResolution": "No action needed; page is discovered again via crawl/sitemap once published in Sanity."
+    },
+    {
+      "path": "/labs/summer-main-lab/",
+      "finding": "Unpublished/temporarily disabled lab page (owner-confirmed 2026-07-07, expected 404 while unpublished).",
+      "expectedResolution": "No action needed; page is discovered again via crawl/sitemap once published in Sanity."
+    },
+    {
+      "path": "/labs/health-sprint/",
+      "finding": "Unpublished/temporarily disabled lab page (owner-confirmed 2026-07-07, expected 404 while unpublished).",
+      "expectedResolution": "No action needed; page is discovered again via crawl/sitemap once published in Sanity."
+    },
+    {
+      "path": "/labs/spring-main-lab/",
+      "finding": "Unpublished/temporarily disabled lab page (owner-confirmed 2026-07-07, expected 404 while unpublished).",
+      "expectedResolution": "No action needed; page is discovered again via crawl/sitemap once published in Sanity."
+    },
+    {
+      "path": "/labs/s26-spring-lab/",
+      "finding": "Unpublished/temporarily disabled lab page (owner-confirmed 2026-07-07, expected 404 while unpublished).",
+      "expectedResolution": "No action needed; page is discovered again via crawl/sitemap once published in Sanity."
+    },
+    {
+      "path": "/labs/test-w26-main-lab/",
+      "finding": "Unpublished/temporarily disabled lab page (owner-confirmed 2026-07-07, expected 404 while unpublished).",
+      "expectedResolution": "No action needed; page is discovered again via crawl/sitemap once published in Sanity."
+    },
+    {
+      "path": "/labs/w26-main-lab/",
+      "finding": "Unpublished/temporarily disabled lab page (owner-confirmed 2026-07-07, expected 404 while unpublished).",
+      "expectedResolution": "No action needed; page is discovered again via crawl/sitemap once published in Sanity."
     }
   ],
   "canonicalizationChecks": [

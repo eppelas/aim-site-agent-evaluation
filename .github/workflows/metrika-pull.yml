@@ -1,0 +1,44 @@
+name: Metrika data pull
+
+# Тянет метрики Яндекс.Метрики с раннера GitHub (обходит VPN-блок локальной
+# сети владельца) и коммитит JSON в ветку metrika-data. Локальный
+# понедельничный дайджест читает: git show origin/metrika-data:reports/metrika/latest.json
+#
+# Требуется secret YM_TOKEN (OAuth-токен Метрики с доступом к счётчику 106857835).
+
+on:
+  schedule:
+    - cron: "30 5 * * *" # ежедневно 05:30 UTC, до понедельничного дайджеста
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Pull Metrika stats
+        env:
+          YM_TOKEN: ${{ secrets.YM_TOKEN }}
+        run: node scripts/metrika-pull.mjs
+      - name: Commit to metrika-data branch
+        run: |
+          git config user.name "metrika-bot"
+          git config user.email "actions@github.com"
+          git fetch origin metrika-data || true
+          git switch -c metrika-data origin/metrika-data 2>/dev/null || git switch -c metrika-data
+          mkdir -p reports/metrika
+          git add -f reports/metrika/
+          git commit -m "metrika: $(date -u +%F)" || echo "nothing to commit"
+          git push origin metrika-data
+      - name: Upload artifact (fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrika-latest
+          path: reports/metrika/latest.json
+          retention-days: 30
