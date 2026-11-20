@@ -1,0 +1,684 @@
+{
+  "counter": "106857835",
+  "generatedAt": "2026-11-20T14:13:13.323Z",
+  "range": {
+    "daily": "14daysAgo..yesterday",
+    "sources": "7daysAgo..yesterday"
+  },
+  "data": {
+    "daily": {
+      "query": [
+        "ym:s:date"
+      ],
+      "totals": [
+        1838,
+        1512,
+        2462
+      ],
+      "rows": [
+        {
+          "dims": [
+            "2026-11-06"
+          ],
+          "metrics": [
+            33,
+            31,
+            40
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-07"
+          ],
+          "metrics": [
+            28,
+            27,
+            35
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-08"
+          ],
+          "metrics": [
+            23,
+            23,
+            28
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-09"
+          ],
+          "metrics": [
+            227,
+            218,
+            327
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-10"
+          ],
+          "metrics": [
+            327,
+            307,
+            460
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-11"
+          ],
+          "metrics": [
+            129,
+            122,
+            162
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-12"
+          ],
+          "metrics": [
+            93,
+            82,
+            131
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-13"
+          ],
+          "metrics": [
+            135,
+            128,
+            180
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-14"
+          ],
+          "metrics": [
+            68,
+            64,
+            89
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-15"
+          ],
+          "metrics": [
+            45,
+            42,
+            55
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-16"
+          ],
+          "metrics": [
+            264,
+            251,
+            344
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-17"
+          ],
+          "metrics": [
+            93,
+            85,
+            125
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-18"
+          ],
+          "metrics": [
+            174,
+            162,
+            213
+          ]
+        },
+        {
+          "dims": [
+            "2026-11-19"
+          ],
+          "metrics": [
+            199,
+            174,
+            273
+          ]
+        }
+      ]
+    },
+    "sources": {
+      "query": [
+        "ym:s:lastTrafficSource",
+        "ym:s:lastSourceEngine"
+      ],
+      "totals": [
+        978,
+        818
+      ],
+      "rows": [
+        {
+          "dims": [
+            "Direct traffic",
+            null
+          ],
+          "metrics": [
+            826,
+            701
+          ]
+        },
+        {
+          "dims": [
+            "Link traffic",
+            "aimindset.org"
+          ],
+          "metrics": [
+            36,
+            30
+          ]
+        },
+        {
+          "dims": [
+            "Link traffic",
+            null
+          ],
+          "metrics": [
+            32,
+            31
+          ]
+        },
+        {
+          "dims": [
+            "Messenger traffic",
+            "Telegram"
+          ],
+          "metrics": [
+            17,
+            16
+          ]
+        },
+        {
+          "dims": [
+            "Link traffic",
+            "f26.aimindset.org"
+          ],
+          "metrics": [
+            13,
+            11
+          ]
+        },
+        {
+          "dims": [
+            "Social network traffic",
+            "Facebook"
+          ],
+          "metrics": [
+            12,
+            10
+          ]
+        },
+        {
+          "dims": [
+            "Recommendation system traffic",
+            "Yandex Zen"
+          ],
+          "metrics": [
+            10,
+            10
+          ]
+        },
+        {
+          "dims": [
+            "Search engine traffic",
+            "Google"
+          ],
+          "metrics": [
+            5,
+            5
+          ]
+        },
+        {
+          "dims": [
+            "Internal traffic",
+            "ai-native.aimindset.org"
+          ],
+          "metrics": [
+            3,
+            3
+          ]
+        },
+        {
+          "dims": [
+            "Link traffic",
+            "partners.aimindset.org"
+          ],
+          "metrics": [
+            3,
+            3
+          ]
+        },
+        {
+          "dims": [
+            "Link traffic",
+            "tgstat.ru"
+          ],
+          "metrics": [
+            3,
+            1
+          ]
+        },
+        {
+          "dims": [
+            "Ad traffic",
+            "Instagram"
+          ],
+          "metrics": [
+            3,
+            3
+          ]
+        },
+        {
+          "dims": [
+            "Social network traffic",
+            "instagram.com"
+          ],
+          "metrics": [
+            3,
+            3
+          ]
+        },
+        {
+          "dims": [
+            "Internal traffic",
+            "ain-conference.aimindset.org"
+          ],
+          "metrics": [
+            1,
+            1
+          ]
+        },
+        {
+          "dims": [
+            "Link traffic",
+            "base.aimindset.org"
+          ],
+          "metrics": [
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    "utm": {
+      "error": "Metrika 400: {\"errors\":[{\"error_type\":\"query_error\",\"message\":\"Query is too complicated. Please reduce the date interval or sampling.\"}],\"code\":400,\"message\":\"Query is too complicated. Please reduce the date interval or sampling.\"}"
+    },
+    "goals": [
+      {
+        "id": 513550646,
+        "name": "Apply: клик на заявку",
+        "reaches7d": 51
+      },
+      {
+        "id": 513550663,
+        "name": "Scroll: 25%",
+        "reaches7d": 228
+      },
+      {
+        "id": 513550664,
+        "name": "Секция: программа",
+        "reaches7d": 1637
+      },
+      {
+        "id": 513550665,
+        "name": "Терминал: команда",
+        "reaches7d": 0
+      },
+      {
+        "id": 513550666,
+        "name": "Тема: переключение",
+        "reaches7d": 0
+      },
+      {
+        "id": 513550667,
+        "name": "Slash-оверлей: открытие",
+        "reaches7d": 0
+      },
+      {
+        "id": 571788134,
+        "name": "Pay: contact entered",
+        "reaches7d": 0
+      },
+      {
+        "id": 571788135,
+        "name": "Pay: checkout clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 571788136,
+        "name": "Pay: provider redirected",
+        "reaches7d": 0
+      },
+      {
+        "id": 571788395,
+        "name": "Pay: error",
+        "reaches7d": 0
+      },
+      {
+        "id": 571788397,
+        "name": "AIN3: section engaged",
+        "reaches7d": 1428
+      },
+      {
+        "id": 571788400,
+        "name": "AIN3: join clicked",
+        "reaches7d": 51
+      },
+      {
+        "id": 571788402,
+        "name": "AIN3: pricing viewed",
+        "reaches7d": 145
+      },
+      {
+        "id": 571788405,
+        "name": "AIN3: payment clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 571788409,
+        "name": "AIN3: team clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 571788414,
+        "name": "AIN3: role selected",
+        "reaches7d": 97
+      },
+      {
+        "id": 577641872,
+        "name": "AIN3: section viewed",
+        "reaches7d": 1638
+      },
+      {
+        "id": 577641873,
+        "name": "AIN3: case list viewed",
+        "reaches7d": 160
+      },
+      {
+        "id": 577641877,
+        "name": "AIN3: case read 15s",
+        "reaches7d": 7
+      },
+      {
+        "id": 577641878,
+        "name": "AIN3: case read 30s",
+        "reaches7d": 2
+      },
+      {
+        "id": 577641882,
+        "name": "AIN3: CTA after case clicked",
+        "reaches7d": 1
+      },
+      {
+        "id": 577641883,
+        "name": "AIN3: pricing engaged 10s",
+        "reaches7d": 50
+      },
+      {
+        "id": 577641884,
+        "name": "AIN3: pricing primary clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 577641885,
+        "name": "AIN3: pricing team clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 577641888,
+        "name": "Pay: page loaded",
+        "reaches7d": 0
+      },
+      {
+        "id": 577641889,
+        "name": "Pay: completed",
+        "reaches7d": 0
+      },
+      {
+        "id": 577647358,
+        "name": "AIN3: interactive opened",
+        "reaches7d": 151
+      },
+      {
+        "id": 599119093,
+        "name": "Waitlist: input started",
+        "reaches7d": 0
+      },
+      {
+        "id": 599119094,
+        "name": "Waitlist: contact entered",
+        "reaches7d": 0
+      },
+      {
+        "id": 513806704,
+        "name": "Auto-goal: Open messenger",
+        "reaches7d": 28
+      },
+      {
+        "id": 514446026,
+        "name": "Auto-goal: Click through to social network",
+        "reaches7d": 0
+      },
+      {
+        "id": 518465178,
+        "name": "Auto-goal: Click on email",
+        "reaches7d": 2
+      },
+      {
+        "id": 571877634,
+        "name": "Autogoal: provided contact information",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914419,
+        "name": "AIN3: role manually selected",
+        "reaches7d": 97
+      },
+      {
+        "id": 575914421,
+        "name": "AIN3: case filter clicked",
+        "reaches7d": 52
+      },
+      {
+        "id": 575914429,
+        "name": "AIN3: case more clicked",
+        "reaches7d": 12
+      },
+      {
+        "id": 575914431,
+        "name": "AIN3: case opened",
+        "reaches7d": 16
+      },
+      {
+        "id": 575914439,
+        "name": "AIN3: route step clicked",
+        "reaches7d": 27
+      },
+      {
+        "id": 575914443,
+        "name": "AIN3: route step dragged",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914450,
+        "name": "AIN3: outcome role clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914459,
+        "name": "AIN3: schedule tile clicked",
+        "reaches7d": 10
+      },
+      {
+        "id": 575914465,
+        "name": "AIN3: schedule tile previewed",
+        "reaches7d": 160
+      },
+      {
+        "id": 575914471,
+        "name": "AIN3: assistant opened",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914478,
+        "name": "AIN3: assistant control clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914479,
+        "name": "AIN3: assistant question submitted",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914514,
+        "name": "AIN3: mobile menu clicked",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914525,
+        "name": "AIN3: nav clicked",
+        "reaches7d": 77
+      },
+      {
+        "id": 575914533,
+        "name": "AIN3: link clicked",
+        "reaches7d": 155
+      },
+      {
+        "id": 575914538,
+        "name": "AIN3: lab link clicked",
+        "reaches7d": 15
+      },
+      {
+        "id": 575914547,
+        "name": "AIN3: CTA clicked",
+        "reaches7d": 58
+      },
+      {
+        "id": 575914573,
+        "name": "AIN3: FAQ opened",
+        "reaches7d": 118
+      },
+      {
+        "id": 575914586,
+        "name": "AIN3: testimonial opened",
+        "reaches7d": 12
+      },
+      {
+        "id": 575914589,
+        "name": "AIN3: speaker recordings opened",
+        "reaches7d": 0
+      },
+      {
+        "id": 575914606,
+        "name": "AIN3: program details opened",
+        "reaches7d": 5
+      },
+      {
+        "id": 599315492,
+        "name": "Auto-goal: Form submission",
+        "reaches7d": 0
+      },
+      {
+        "id": 680510014,
+        "name": "AIN4 — просмотр блока",
+        "reaches7d": 2058
+      },
+      {
+        "id": 680510015,
+        "name": "AIN4 — возврат к блоку",
+        "reaches7d": 630
+      },
+      {
+        "id": 680510032,
+        "name": "AIN4 — нажатие CTA (не регистрация)",
+        "reaches7d": 346
+      },
+      {
+        "id": 680510049,
+        "name": "AIN4 — назначение карточки",
+        "reaches7d": 118
+      },
+      {
+        "id": 680510050,
+        "name": "AIN4 — сброс карточек",
+        "reaches7d": 2
+      },
+      {
+        "id": 680510051,
+        "name": "AIN4 — раскрытие подтверждения",
+        "reaches7d": 153
+      },
+      {
+        "id": 680510053,
+        "name": "AIN4 — последний наблюдаемый блок",
+        "reaches7d": 1091
+      },
+      {
+        "id": 681334803,
+        "name": "AIN4 experiment: hero exposed",
+        "reaches7d": 244
+      },
+      {
+        "id": 681334804,
+        "name": "AIN4 experiment: enrollment bot clicked",
+        "reaches7d": 16
+      },
+      {
+        "id": 681336047,
+        "name": "ain4_speaker_disclosure",
+        "reaches7d": 2
+      },
+      {
+        "id": 681336048,
+        "name": "ain4_fit_selected",
+        "reaches7d": 36
+      },
+      {
+        "id": 681336050,
+        "name": "ain4_section_entered",
+        "reaches7d": 1517
+      },
+      {
+        "id": 681336051,
+        "name": "ain4_section_transition",
+        "reaches7d": 1274
+      },
+      {
+        "id": 681336052,
+        "name": "ain4_section_time",
+        "reaches7d": 2677
+      },
+      {
+        "id": 681336053,
+        "name": "ain4_journey_checkpoint",
+        "reaches7d": 505
+      },
+      {
+        "id": 684489357,
+        "name": "fit_flip",
+        "reaches7d": 30
+      }
+    ]
+  }
+}
